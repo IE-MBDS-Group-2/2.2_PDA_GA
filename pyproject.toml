@@ -1,0 +1,18 @@
+[project]
+name = "PDA2-GA-Project"
+version = "0.1.0"
+description = "Package environment for PDA2 Group Assignment"
+requires-python = ">=3.11"
+dependencies = [
+    "ipykernel>=7.1.0",
+    "jupyter>=1.1.1",
+    "notebook>=7.5.1",
+    "numpy>=2.4.0",
+    "pandas>=2.3.3",
+    "plotly>=6.5.0",
+    "python-dotenv>=1.2.1",
+    "requests>=2.31.0",
+    "scikit-learn>=1.8.0",
+    "streamlit>=1.32.0",
+    "yfinance>=0.2.0",
+]
