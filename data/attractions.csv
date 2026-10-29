@@ -1,0 +1,261 @@
+city,name,category,setting,wind_sensitive,lat,lon
+Madrid,Retiro Park,Park,outdoor,false,40.4153,-3.6845
+Madrid,Prado Museum,Museum,indoor,false,40.4138,-3.6921
+Madrid,Royal Palace,Palace,mixed,false,40.418,-3.7143
+Madrid,Templo de Debod,Monument,outdoor,false,40.424,-3.7177
+Madrid,Plaza Mayor,Plaza,outdoor,false,40.4155,-3.7074
+Madrid,Reina Sofia Museum,Museum,indoor,false,40.4086,-3.6944
+Madrid,Santiago Bernabeu Stadium Tour,Stadium,mixed,false,40.4531,-3.6883
+Madrid,Mercado de San Miguel,Market,indoor,false,40.4154,-3.7090
+Madrid,Almudena Cathedral,Cathedral,indoor,false,40.4156,-3.7143
+Madrid,Teleferico de Madrid,Cable car,outdoor,true,40.4219,-3.7206
+London,Tower of London,Castle,mixed,false,51.5081,-0.0759
+London,British Museum,Museum,indoor,false,51.5194,-0.127
+London,London Eye,Observation wheel,outdoor,true,51.5033,-0.1195
+London,Hyde Park,Park,outdoor,false,51.5073,-0.1657
+London,Buckingham Palace,Palace,mixed,false,51.5014,-0.1419
+London,Westminster Abbey,Church,indoor,false,51.4994,-0.1273
+London,Tower Bridge,Bridge,outdoor,false,51.5055,-0.0754
+London,Natural History Museum,Museum,indoor,false,51.4967,-0.1764
+London,Camden Market,Market,mixed,false,51.5415,-0.1465
+London,Royal Observatory Greenwich,Observatory,mixed,false,51.4769,-0.0005
+Paris,Eiffel Tower,Tower,outdoor,true,48.8584,2.2945
+Paris,Louvre Museum,Museum,indoor,false,48.8606,2.3376
+Paris,Luxembourg Gardens,Park,outdoor,false,48.8462,2.3372
+Paris,Seine River Cruise,Boat tour,outdoor,true,48.8606,2.3003
+Paris,Notre-Dame Cathedral,Cathedral,mixed,false,48.8530,2.3499
+Paris,Sacre-Coeur Basilica,Basilica,mixed,false,48.8867,2.3431
+Paris,Musee d'Orsay,Museum,indoor,false,48.8600,2.3266
+Paris,Arc de Triomphe,Monument,outdoor,true,48.8738,2.2950
+Paris,Palace of Versailles,Palace,mixed,false,48.8049,2.1204
+Paris,Centre Pompidou,Museum,indoor,false,48.8606,2.3522
+Rome,Colosseum,Ancient site,mixed,false,41.8902,12.4922
+Rome,Vatican Museums,Museum,indoor,false,41.9065,12.4536
+Rome,Trevi Fountain,Monument,outdoor,false,41.9009,12.4833
+Rome,Villa Borghese Gardens,Park,outdoor,false,41.9142,12.4923
+Rome,Pantheon,Temple,indoor,false,41.8986,12.4769
+Rome,Roman Forum,Ancient site,outdoor,false,41.8925,12.4853
+Rome,St. Peter's Basilica,Basilica,mixed,false,41.9022,12.4539
+Rome,Spanish Steps,Monument,outdoor,false,41.9060,12.4828
+Rome,Piazza Navona,Plaza,outdoor,false,41.8992,12.4731
+Rome,Castel Sant'Angelo,Castle,mixed,false,41.9031,12.4663
+Berlin,Brandenburg Gate,Monument,outdoor,false,52.5163,13.3777
+Berlin,Neues Museum,Museum,indoor,false,52.5206,13.3980
+Berlin,Tiergarten,Park,outdoor,false,52.5145,13.3501
+Berlin,TV Tower Observation Deck,Tower,mixed,true,52.5208,13.4094
+Berlin,Reichstag Dome,Parliament,mixed,true,52.5186,13.3762
+Berlin,Berlin Wall Memorial,Memorial,outdoor,false,52.5352,13.3903
+Berlin,Checkpoint Charlie,Landmark,outdoor,false,52.5075,13.3904
+Berlin,Charlottenburg Palace,Palace,mixed,false,52.5207,13.2960
+Berlin,East Side Gallery,Open-air gallery,outdoor,false,52.5050,13.4397
+Berlin,Holocaust Memorial,Memorial,outdoor,false,52.5139,13.3787
+Lisbon,Belem Tower,Fortress,outdoor,false,38.6916,-9.2160
+Lisbon,Jeronimos Monastery,Monastery,mixed,false,38.6979,-9.2068
+Lisbon,Oceanarium,Aquarium,indoor,false,38.7634,-9.0937
+Lisbon,Sao Jorge Castle,Castle,outdoor,false,38.7139,-9.1334
+Lisbon,Praca do Comercio,Plaza,outdoor,false,38.7077,-9.1365
+Lisbon,Tram 28 Ride,Tram,outdoor,false,38.7139,-9.1394
+Lisbon,Santa Justa Lift,Lift,outdoor,true,38.7121,-9.1393
+Lisbon,Time Out Market,Market,indoor,false,38.7066,-9.1456
+Lisbon,National Tile Museum,Museum,indoor,false,38.7243,-9.1135
+Lisbon,LX Factory,Market,mixed,false,38.7033,-9.1782
+Istanbul,Hagia Sophia,Mosque,indoor,false,41.0086,28.9802
+Istanbul,Topkapi Palace,Palace,mixed,false,41.0115,28.9834
+Istanbul,Bosphorus Cruise,Boat tour,outdoor,true,41.0256,28.9744
+Istanbul,Grand Bazaar,Market,indoor,false,41.0107,28.968
+Istanbul,Blue Mosque,Mosque,indoor,false,41.0054,28.9768
+Istanbul,Basilica Cistern,Underground cistern,indoor,false,41.0084,28.9779
+Istanbul,Galata Tower,Tower,mixed,true,41.0256,28.9741
+Istanbul,Suleymaniye Mosque,Mosque,mixed,false,41.0162,28.9640
+Istanbul,Spice Bazaar,Market,indoor,false,41.0166,28.9708
+Istanbul,Dolmabahce Palace,Palace,mixed,false,41.0392,29.0005
+Cairo,Pyramids of Giza,Ancient site,outdoor,false,29.9792,31.1342
+Cairo,Egyptian Museum,Museum,indoor,false,30.0478,31.2336
+Cairo,Khan el-Khalili Bazaar,Market,mixed,false,30.0477,31.2622
+Cairo,Citadel of Saladin,Fortress,outdoor,false,30.0287,31.2599
+Cairo,Grand Egyptian Museum,Museum,indoor,false,29.9942,31.1190
+Cairo,Al-Azhar Park,Park,outdoor,false,30.0399,31.2634
+Cairo,Great Sphinx,Ancient site,outdoor,false,29.9753,31.1376
+Cairo,Hanging Church,Church,indoor,false,30.0053,31.2305
+Cairo,Nile Felucca Ride,Boat tour,outdoor,true,30.0450,31.2240
+Cairo,Saqqara Step Pyramid,Ancient site,outdoor,false,29.8713,31.2165
+Dubai,Burj Khalifa Observation Deck,Tower,indoor,true,25.1972,55.2744
+Dubai,Dubai Mall Aquarium,Aquarium,indoor,false,25.1985,55.2796
+Dubai,Jumeirah Beach,Beach,outdoor,false,25.2048,55.2415
+Dubai,Desert Safari,Safari,outdoor,false,25.0657,55.1713
+Dubai,Dubai Frame,Observation deck,mixed,true,25.2355,55.3000
+Dubai,Dubai Fountain Show,Show,outdoor,false,25.1950,55.2744
+Dubai,Atlantis Aquaventure,Water park,outdoor,false,25.1304,55.1172
+Dubai,Al Fahidi Historic District,Heritage district,mixed,false,25.2634,55.2972
+Dubai,Ski Dubai,Indoor ski,indoor,false,25.1181,55.1960
+Dubai,Gold Souk,Market,mixed,false,25.2870,55.2977
+Mumbai,Gateway of India,Monument,outdoor,false,18.922,72.8347
+Mumbai,Elephanta Caves (ferry),Boat tour,outdoor,true,18.9633,72.9315
+Mumbai,Chhatrapati Shivaji Terminus,Heritage building,mixed,false,18.9398,72.8355
+Mumbai,Marine Drive,Promenade,outdoor,false,18.9432,72.8236
+Mumbai,Haji Ali Dargah,Shrine,mixed,false,18.9827,72.8089
+Mumbai,Sanjay Gandhi National Park,Park,outdoor,false,19.2147,72.9106
+Mumbai,Prince of Wales Museum,Museum,indoor,false,18.9269,72.8326
+Mumbai,Juhu Beach,Beach,outdoor,false,19.0988,72.8265
+Mumbai,Colaba Causeway,Market,outdoor,false,18.9170,72.8254
+Mumbai,Dhobi Ghat,Landmark,outdoor,false,18.9826,72.8277
+Bangkok,Grand Palace,Palace,outdoor,false,13.75,100.4913
+Bangkok,Wat Pho,Temple,mixed,false,13.7465,100.493
+Bangkok,Chao Phraya River Boat,Boat tour,outdoor,true,13.7367,100.4887
+Bangkok,Jim Thompson House,Museum,indoor,false,13.7496,100.5285
+Bangkok,Wat Arun,Temple,outdoor,false,13.7437,100.4888
+Bangkok,Chatuchak Weekend Market,Market,mixed,false,13.7999,100.5503
+Bangkok,Lumphini Park,Park,outdoor,false,13.7314,100.5414
+Bangkok,SEA LIFE Bangkok,Aquarium,indoor,false,13.7466,100.5347
+Bangkok,Khao San Road,Street,outdoor,false,13.7589,100.4974
+Bangkok,Wat Saket Golden Mount,Temple,outdoor,false,13.7539,100.5065
+Singapore,Gardens by the Bay,Park,outdoor,false,1.2816,103.8636
+Singapore,Singapore Flyer,Observation wheel,outdoor,true,1.2893,103.8631
+Singapore,ArtScience Museum,Museum,indoor,false,1.2863,103.8593
+Singapore,Sentosa Beaches,Beach,outdoor,false,1.2494,103.8303
+Singapore,Marina Bay Sands SkyPark,Observation deck,outdoor,true,1.2834,103.8607
+Singapore,Singapore Zoo,Zoo,outdoor,false,1.4043,103.7930
+Singapore,National Gallery Singapore,Museum,indoor,false,1.2905,103.8515
+Singapore,Lau Pa Sat,Hawker centre,mixed,false,1.2806,103.8504
+Singapore,Singapore Botanic Gardens,Park,outdoor,false,1.3138,103.8159
+Singapore,Merlion Park,Landmark,outdoor,false,1.2868,103.8545
+Tokyo,Senso-ji Temple,Temple,outdoor,false,35.7148,139.7967
+Tokyo,Tokyo Skytree,Tower,indoor,true,35.7101,139.8107
+Tokyo,Meiji Shrine,Shrine,outdoor,false,35.6764,139.6993
+Tokyo,teamLab Planets,Museum,indoor,false,35.6492,139.7893
+Tokyo,Shibuya Crossing,Landmark,outdoor,false,35.6595,139.7005
+Tokyo,Tokyo Tower,Tower,mixed,true,35.6586,139.7454
+Tokyo,Ueno Park,Park,outdoor,false,35.7156,139.7745
+Tokyo,Tokyo National Museum,Museum,indoor,false,35.7189,139.7765
+Tokyo,Imperial Palace East Gardens,Garden,outdoor,false,35.6852,139.7528
+Tokyo,Tsukiji Outer Market,Market,mixed,false,35.6655,139.7707
+Sydney,Sydney Opera House,Performing arts,mixed,false,-33.8568,151.2153
+Sydney,Bondi Beach,Beach,outdoor,false,-33.8908,151.2743
+Sydney,Sydney Harbour Bridge Climb,Climb,outdoor,true,-33.8523,151.2108
+Sydney,Taronga Zoo,Zoo,outdoor,false,-33.8434,151.2411
+Sydney,Royal Botanic Garden,Park,outdoor,false,-33.8642,151.2166
+Sydney,The Rocks,Heritage district,outdoor,false,-33.8599,151.2090
+Sydney,Art Gallery of NSW,Museum,indoor,false,-33.8688,151.2174
+Sydney,Manly Ferry,Ferry,outdoor,true,-33.8005,151.2882
+Sydney,SEA LIFE Sydney Aquarium,Aquarium,indoor,false,-33.8691,151.2020
+Sydney,Queen Victoria Building,Shopping,indoor,false,-33.8719,151.2067
+Cape Town,Table Mountain Cableway,Cable car,outdoor,true,-33.9628,18.4098
+Cape Town,Robben Island Ferry,Boat tour,outdoor,true,-33.9081,18.4232
+Cape Town,Kirstenbosch Gardens,Park,outdoor,false,-33.9879,18.4325
+Cape Town,Zeitz MOCAA,Museum,indoor,false,-33.9078,18.4228
+Cape Town,V&A Waterfront,Waterfront,mixed,false,-33.9036,18.4207
+Cape Town,Signal Hill,Viewpoint,outdoor,false,-33.9190,18.3980
+Cape Town,Boulders Beach Penguins,Beach,outdoor,false,-34.1976,18.4510
+Cape Town,Bo-Kaap,Neighbourhood,outdoor,false,-33.9205,18.4147
+Cape Town,Castle of Good Hope,Fortress,mixed,false,-33.9258,18.4276
+Cape Town,Lion's Head Hike,Hike,outdoor,true,-33.9360,18.3880
+New York,Statue of Liberty,Monument,outdoor,true,40.6892,-74.0445
+New York,Metropolitan Museum of Art,Museum,indoor,false,40.7794,-73.9632
+New York,Central Park,Park,outdoor,false,40.7829,-73.9654
+New York,Top of the Rock,Observation deck,mixed,true,40.7593,-73.9794
+New York,Empire State Building,Observation deck,mixed,true,40.7484,-73.9857
+New York,Brooklyn Bridge,Bridge,outdoor,false,40.7061,-73.9969
+New York,The High Line,Park,outdoor,false,40.7480,-74.0048
+New York,MoMA,Museum,indoor,false,40.7614,-73.9776
+New York,9/11 Memorial and Museum,Memorial,mixed,false,40.7115,-74.0134
+New York,Times Square,Plaza,outdoor,false,40.7580,-73.9855
+Los Angeles,Griffith Observatory,Observatory,mixed,false,34.1184,-118.3004
+Los Angeles,Santa Monica Pier,Pier,outdoor,false,34.0092,-118.4973
+Los Angeles,Getty Center,Museum,mixed,false,34.0780,-118.4741
+Los Angeles,Hollywood Walk of Fame,Landmark,outdoor,false,34.1017,-118.3267
+Los Angeles,Venice Beach Boardwalk,Beach,outdoor,false,33.9850,-118.4695
+Los Angeles,LACMA,Museum,mixed,false,34.0639,-118.3592
+Los Angeles,Universal Studios Hollywood,Theme park,mixed,false,34.1381,-118.3534
+Los Angeles,The Broad,Museum,indoor,false,34.0544,-118.2506
+Los Angeles,Hollywood Sign Viewpoint,Viewpoint,outdoor,false,34.1341,-118.3215
+Los Angeles,Grand Central Market,Market,indoor,false,34.0508,-118.2490
+Mexico City,Zocalo and Metropolitan Cathedral,Plaza,mixed,false,19.4326,-99.1332
+Mexico City,Chapultepec Castle,Castle,mixed,false,19.4204,-99.1819
+Mexico City,Teotihuacan Pyramids,Ancient site,outdoor,false,19.6925,-98.8438
+Mexico City,Frida Kahlo Museum,Museum,indoor,false,19.3553,-99.1625
+Mexico City,National Museum of Anthropology,Museum,indoor,false,19.4260,-99.1861
+Mexico City,Palacio de Bellas Artes,Theatre,indoor,false,19.4352,-99.1412
+Mexico City,Xochimilco Boat Ride,Boat tour,outdoor,true,19.2570,-99.1030
+Mexico City,Coyoacan Plaza,Plaza,outdoor,false,19.3500,-99.1620
+Mexico City,Torre Latinoamericana,Observation deck,mixed,true,19.4337,-99.1406
+Mexico City,Basilica of Guadalupe,Basilica,mixed,false,19.4845,-99.1170
+Rio de Janeiro,Christ the Redeemer,Monument,outdoor,true,-22.9519,-43.2105
+Rio de Janeiro,Sugarloaf Cable Car,Cable car,outdoor,true,-22.9487,-43.1546
+Rio de Janeiro,Copacabana Beach,Beach,outdoor,false,-22.9711,-43.1822
+Rio de Janeiro,Selaron Steps,Landmark,outdoor,false,-22.9154,-43.1788
+Rio de Janeiro,Ipanema Beach,Beach,outdoor,false,-22.9867,-43.2058
+Rio de Janeiro,Tijuca National Park,Park,outdoor,false,-22.9531,-43.2870
+Rio de Janeiro,Maracana Stadium,Stadium,mixed,false,-22.9121,-43.2302
+Rio de Janeiro,Botanical Garden,Park,outdoor,false,-22.9674,-43.2240
+Rio de Janeiro,Museum of Tomorrow,Museum,mixed,false,-22.8944,-43.1800
+Rio de Janeiro,Lapa Arches,Landmark,outdoor,false,-22.9131,-43.1796
+Buenos Aires,Plaza de Mayo,Plaza,outdoor,false,-34.6083,-58.3712
+Buenos Aires,Recoleta Cemetery,Cemetery,outdoor,false,-34.5875,-58.3931
+Buenos Aires,Teatro Colon,Theatre,indoor,false,-34.6010,-58.3831
+Buenos Aires,Ecological Reserve,Nature reserve,outdoor,false,-34.6122,-58.3500
+Buenos Aires,El Ateneo Grand Splendid,Bookstore,indoor,false,-34.5959,-58.3939
+Buenos Aires,Caminito La Boca,Street,outdoor,false,-34.6393,-58.3626
+Buenos Aires,Obelisco,Landmark,outdoor,false,-34.6037,-58.3816
+Buenos Aires,MALBA,Museum,indoor,false,-34.5772,-58.4034
+Buenos Aires,Rosedal de Palermo,Park,outdoor,false,-34.5700,-58.4150
+Buenos Aires,San Telmo Market,Market,mixed,false,-34.6209,-58.3720
+Beirut,Raouche Rocks,Landmark,outdoor,false,33.8896,35.4710
+Beirut,National Museum of Beirut,Museum,indoor,false,33.8786,35.5155
+Beirut,Beirut Corniche,Promenade,outdoor,false,33.8985,35.4730
+Beirut,Mohammad Al-Amin Mosque,Mosque,mixed,false,33.8957,35.5058
+Beirut,Martyrs' Square,Plaza,outdoor,false,33.8970,35.5069
+Beirut,Sursock Museum,Museum,indoor,false,33.8960,35.5170
+Beirut,Zaitunay Bay,Waterfront,outdoor,false,33.9009,35.4975
+Beirut,Saint George Maronite Cathedral,Cathedral,indoor,false,33.8967,35.5062
+Beirut,Beirut Souks,Market,mixed,false,33.8995,35.5083
+Beirut,AUB Archaeological Museum,Museum,indoor,false,33.8993,35.4800
+Washington D.C.,Lincoln Memorial,Memorial,outdoor,false,38.8893,-77.0502
+Washington D.C.,Washington Monument,Monument,mixed,true,38.8895,-77.0353
+Washington D.C.,US Capitol,Government building,mixed,false,38.8899,-77.0091
+Washington D.C.,National Air and Space Museum,Museum,indoor,false,38.8882,-77.0199
+Washington D.C.,National Museum of Natural History,Museum,indoor,false,38.8913,-77.0261
+Washington D.C.,White House,Landmark,outdoor,false,38.8977,-77.0365
+Washington D.C.,Jefferson Memorial,Memorial,outdoor,false,38.8814,-77.0365
+Washington D.C.,National Gallery of Art,Museum,indoor,false,38.8913,-77.0200
+Washington D.C.,Georgetown Waterfront,Waterfront,outdoor,false,38.9022,-77.0622
+Washington D.C.,Tidal Basin Walk,Park,outdoor,false,38.8850,-77.0390
+Quito,Plaza Grande,Plaza,outdoor,false,-0.2201,-78.5123
+Quito,Basilica del Voto Nacional,Basilica,mixed,true,-0.2149,-78.5086
+Quito,TelefériQo Cable Car,Cable car,outdoor,true,-0.1894,-78.5190
+Quito,El Panecillo,Viewpoint,outdoor,false,-0.2292,-78.5159
+Quito,Iglesia de la Compania de Jesus,Church,indoor,false,-0.2207,-78.5139
+Quito,Parque La Carolina,Park,outdoor,false,-0.1822,-78.4850
+Quito,National Museum of Ecuador,Museum,indoor,false,-0.2030,-78.4910
+Quito,Casa del Alabado Museum,Museum,indoor,false,-0.2208,-78.5135
+Quito,Calle La Ronda,Street,outdoor,false,-0.2212,-78.5125
+Quito,Capilla del Hombre,Museum,indoor,false,-0.1990,-78.4832
+Abu Dhabi,Sheikh Zayed Grand Mosque,Mosque,mixed,false,24.4129,54.4749
+Abu Dhabi,Louvre Abu Dhabi,Museum,mixed,false,24.5336,54.3983
+Abu Dhabi,Emirates Palace,Palace,mixed,false,24.4617,54.3173
+Abu Dhabi,Qasr Al Watan,Palace,mixed,false,24.4727,54.3009
+Abu Dhabi,Ferrari World,Theme park,indoor,false,24.4836,54.6070
+Abu Dhabi,Yas Waterworld,Water park,outdoor,false,24.4880,54.6020
+Abu Dhabi,Corniche Beach,Beach,outdoor,false,24.4640,54.3380
+Abu Dhabi,Heritage Village,Heritage village,outdoor,false,24.4720,54.3270
+Abu Dhabi,Jubail Mangrove Park,Park,outdoor,false,24.5260,54.4160
+Abu Dhabi,Observation Deck at 300,Observation deck,indoor,true,24.4600,54.3190
+Warsaw,Old Town Market Square,Plaza,outdoor,false,52.2497,21.0122
+Warsaw,Royal Castle,Palace,mixed,false,52.2480,21.0147
+Warsaw,Palace of Culture and Science,Tower,mixed,true,52.2317,21.0060
+Warsaw,Lazienki Park,Park,outdoor,false,52.2150,21.0350
+Warsaw,Wilanow Palace,Palace,mixed,false,52.1650,21.0900
+Warsaw,POLIN Museum,Museum,indoor,false,52.2497,20.9937
+Warsaw,Warsaw Uprising Museum,Museum,indoor,false,52.2328,20.9809
+Warsaw,Copernicus Science Centre,Museum,indoor,false,52.2412,21.0287
+Warsaw,Vistula Boulevards,Promenade,outdoor,false,52.2400,21.0300
+Warsaw,Saxon Garden,Park,outdoor,false,52.2407,21.0128
+Manila,Intramuros,Historic district,outdoor,false,14.5906,120.9750
+Manila,Fort Santiago,Fortress,outdoor,false,14.5958,120.9660
+Manila,Rizal Park,Park,outdoor,false,14.5831,120.9794
+Manila,National Museum of the Philippines,Museum,indoor,false,14.5870,120.9815
+Manila,Manila Cathedral,Cathedral,indoor,false,14.5918,120.9726
+Manila,San Agustin Church,Church,indoor,false,14.5890,120.9755
+Manila,Manila Ocean Park,Aquarium,mixed,false,14.5788,120.9740
+Manila,Binondo Chinatown,Neighbourhood,outdoor,false,14.6000,120.9740
+Manila,Manila Bay Promenade,Promenade,outdoor,false,14.5740,120.9760
+Manila,SM Mall of Asia,Shopping,indoor,false,14.5350,120.9822

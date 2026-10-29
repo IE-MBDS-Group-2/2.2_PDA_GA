@@ -1,18 +1,27 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "PDA2-GA-Project"
+name = "weather-insights"
 version = "0.1.0"
-description = "Package environment for PDA2 Group Assignment"
+description = "Group capstone: world weather map, city close-ups and attraction visit advice on the OpenWeatherMap API."
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "ipykernel>=7.1.0",
-    "jupyter>=1.1.1",
-    "notebook>=7.5.1",
-    "numpy>=2.4.0",
-    "pandas>=2.3.3",
-    "plotly>=6.5.0",
-    "python-dotenv>=1.2.1",
-    "requests>=2.31.0",
-    "scikit-learn>=1.8.0",
-    "streamlit>=1.32.0",
-    "yfinance>=0.2.0",
+    "pandas>=2.2",
+    "plotly>=6.0",
+    "python-dotenv>=1.0",
+    "requests>=2.31",
+    "streamlit>=1.55",
 ]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
