@@ -239,6 +239,18 @@ def test_valid_place_names_cleaned():
     assert validate_poi_name("Museo\t\tdel\nPrado") == "Museo del Prado"  # tabs/newlines collapse
 
 
+def test_accents_and_vowel_signs_are_accepted_and_normalised():
+    decomposed = "Café de Flore"  # "e" followed by a separate accent, as pasted from some apps
+    assert validate_poi_name(decomposed) == "Café de Flore"  # stored as one precomposed "é"
+    assert validate_poi_name("ताज महल") == "ताज महल"  # Hindi: vowel signs are marks, not letters
+    assert validate_poi_name("ศาลาว่าการ") == "ศาลาว่าการ"  # Thai
+
+
+def test_a_name_made_only_of_marks_has_no_letters():
+    with pytest.raises(InvalidInputError, match="at least one letter"):
+        validate_poi_name("́́")
+
+
 def test_invalid_characters_are_listed_in_the_error():
     with pytest.raises(InvalidInputError, match="cannot contain: < > _"):
         validate_poi_name("Museo_<del>")
@@ -259,6 +271,17 @@ def test_search_drops_bus_stops_and_matches_far_from_the_city():
     answer = [stop, paris, station, hit()]
     found = place_client(FakeResponse(200, answer)).search_poi("Templo de Debod", MADRID)
     assert [c.label for c in found] == ["Templo de Debod, Madrid"]
+
+
+def test_search_keeps_squares_and_footways_but_drops_the_city_outline():
+    # Real shapes seen from Nominatim: an unknown name falls back to the city's own outline, while
+    # famous squares are classed as pedestrian streets ("Puerta del Sol") or place/square.
+    outline = hit("Madrid, Community of Madrid, Spain", lat="40.4167", lon="-3.7033",
+                  category="boundary", type_="administrative")
+    sol = hit("Puerta del Sol", category="highway", type_="pedestrian")
+    plaza = hit("Plaza Mayor", category="place", type_="square")
+    found = place_client(FakeResponse(200, [outline, sol, plaza])).search_poi("Plaza", MADRID)
+    assert [c.label for c in found] == ["Puerta del Sol", "Plaza Mayor"]
 
 
 def test_search_keeps_the_providers_order():

@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 import threading
 import time
+import unicodedata
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -87,12 +88,15 @@ def validate_poi_name(raw: str) -> str:
     """
     if raw is None or not str(raw).strip():
         raise InvalidInputError("Please type the name of the place.")
-    name = _WHITESPACE.sub(" ", str(raw)).strip()
+    # NFC joins "e" + a separate accent into one "é", so pasted text compares equal to typed text.
+    name = unicodedata.normalize("NFC", _WHITESPACE.sub(" ", str(raw)).strip())
     if len(name) > 100:
         raise InvalidInputError("That name is too long (100 characters max).")
-    if not _LETTER.search(name):
+    # Accents and vowel signs (Hindi, Thai...) are "marks"; \w does not match them, so check without.
+    base = "".join(ch for ch in name if not unicodedata.category(ch).startswith("M"))
+    if not _LETTER.search(base):
         raise InvalidInputError("A place name needs at least one letter.")
-    bad = sorted(set(_POI_DISALLOWED.findall(name)))
+    bad = sorted(set(_POI_DISALLOWED.findall(base)))
     if bad:
         raise InvalidInputError(f"Place names cannot contain: {' '.join(bad)}")
     return name
@@ -257,7 +261,11 @@ class OpenWeatherClient(JSONAPIClient):
 
 
 # ---- OpenStreetMap Nominatim (finding a named place) ------------------------------------------
-_SKIP_OSM_CLASSES = frozenset({"highway", "railway"})  # bus stops and stations share names with landmarks
+# Matches that are not visitable places. Whole classes: city/district outlines (what Nominatim falls back
+# to when the name is unknown) and train/transit stops. Not all of "highway": it also holds pedestrian
+# squares and footpaths such as Puerta del Sol, so only its bus stops are skipped.
+_SKIP_OSM_CLASSES = frozenset({"boundary", "railway", "public_transport"})
+_SKIP_OSM_TYPES = frozenset({"bus_stop"})
 
 
 def _to_candidates(hits: list, city: Location) -> list[POICandidate]:
@@ -266,7 +274,7 @@ def _to_candidates(hits: list, city: Location) -> list[POICandidate]:
     """
     candidates = []
     for hit in hits:
-        if hit.get("category") in _SKIP_OSM_CLASSES:
+        if hit.get("category") in _SKIP_OSM_CLASSES or hit.get("type") in _SKIP_OSM_TYPES:
             continue
         lat, lon = float(hit["lat"]), float(hit["lon"])
         km = haversine_km(city.lat, city.lon, lat, lon)
