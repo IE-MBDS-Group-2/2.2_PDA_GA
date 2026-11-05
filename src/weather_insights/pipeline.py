@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .config import LOG_CSV, get_api_key
-from .extract import BatchResult, OpenWeatherClient, fetch_many
-from .load import append_snapshots, save_user_city
-from .models import Assumptions, Attraction, Location, WeatherSnapshot
+from .config import ATTRACTIONS_CSV, LOG_CSV, USER_ATTRACTIONS_CSV, get_api_key
+from .extract import (
+    BatchResult, InvalidInputError, NominatimClient, OpenWeatherClient, fetch_many,
+    validate_poi_coordinates, validate_poi_name,
+)
+from .load import append_snapshots, save_user_attraction, save_user_city
+from .models import Assumptions, Attraction, Location, POICandidate, WeatherSnapshot
 from .transform import assess_city, build_grid
 
 
@@ -42,6 +45,44 @@ def add_city(client: OpenWeatherClient, query: str) -> tuple[Location, bool]:
     """Validate and geocode a city typed by the user, then remember it. Returns (location, is_new)."""
     location = client.geocode(query)
     return location, save_user_city(location)
+
+
+SETTINGS = ("outdoor", "indoor", "mixed")  # where a visit takes place; drives the weather verdict
+MAX_CATEGORY_LEN = 40
+
+
+def build_place_client() -> NominatimClient:
+    """Create the place-search client (OpenStreetMap needs no API key)."""
+    return NominatimClient()
+
+
+def find_poi(client: NominatimClient, name: str, city: Location) -> list[POICandidate]:
+    """Possible matches for a place the user typed in, near ``city``. Empty if nothing fits."""
+    return client.search_poi(name, city)
+
+
+def _clean_category(raw: str) -> str:
+    category = " ".join(str(raw or "").split()) or "Other"
+    if len(category) > MAX_CATEGORY_LEN:
+        raise InvalidInputError(f"That category is too long ({MAX_CATEGORY_LEN} characters max).")
+    if category[0] in "=+-@":  # spreadsheet programs treat these as the start of a formula
+        raise InvalidInputError("A category cannot start with = + - or @.")
+    return category
+
+
+def add_attraction(city: Location, name: str, category: str, setting: str, wind_sensitive: bool,
+                   lat: float, lon: float, user_csv=USER_ATTRACTIONS_CSV,
+                   curated_csv=ATTRACTIONS_CSV) -> tuple[Attraction, bool]:
+    """Validate and remember a user-added attraction. Returns (attraction, is_new).
+
+    Raises InvalidInputError for bad input; is_new is False if the city already has that name.
+    """
+    if setting not in SETTINGS:
+        raise InvalidInputError(f"Choose where it takes place: {', '.join(SETTINGS)}.")
+    lat, lon = validate_poi_coordinates(city, lat, lon)
+    attraction = Attraction(city.city, validate_poi_name(name), _clean_category(category),
+                            setting, bool(wind_sensitive), lat, lon)
+    return attraction, save_user_attraction(attraction, user_csv, curated_csv)
 
 
 def city_attractions(attractions: list[Attraction], city: str) -> list[Attraction]:
