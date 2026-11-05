@@ -3,11 +3,11 @@
 A Streamlit app that answers a traveller's real question: **"What can I actually do in this city today, and when is the best day to go?"**
 
 - **🌍 World overview** – live weather for 26 cities (including the capitals of Spain, the US, Lebanon, Ecuador, the UAE, Poland and the Philippines) on a smooth, weather-app-style colour field (interpolated between the cities and fading out far from any of them; colour scales are fixed so colours mean the same thing everywhere: temperature 0–38 °C, humidity/clouds/comfort 0–100, wind 0–20 m/s, rain 0–5 mm/h with white = dry) with a dot per city, plus the hottest / coldest / windiest / most comfortable city and a sortable ranking.
-- **🔍 City close-up** – pick a city and the app samples the weather on a grid around it (you choose the grid and radius, 2–10 points and 1–100 km), paints it on the same fixed colour scales (tick *Fit colours to this city* to stretch them to local values) as a continuous colour surface interpolated between the real readings (or, optionally, as flat cells) over a street map, and pins the city's 10 attractions on top. Each attraction gets a verdict card from the weather *at its own location*: ✅ good to go, ⚠️ not ideal, ⛔ not recommended (e.g. cable cars and boat tours stop in strong wind, outdoor sights in thunderstorms), with the reasons. A 5-day forecast tells you the best day to visit a chosen attraction.
+- **🔍 City close-up** – pick a city and the app samples the weather on a grid around it (you choose the grid and radius, 2–10 points and 1–100 km), paints it on the same fixed colour scales (tick *Fit colours to this city* to stretch them to local values) as a continuous colour surface interpolated between the real readings (or, optionally, as flat cells) over a street map, and pins the city's attractions (10 curated per default city, plus any you add) on top. Each attraction gets a verdict card from the weather *at its own location*: ✅ good to go, ⚠️ not ideal, ⛔ not recommended (e.g. cable cars and boat tours stop in strong wind, outdoor sights in thunderstorms), with the reasons. A 5-day forecast tells you the best day to visit a chosen attraction. Is your favourite place missing? Open **➕ Add an attraction that is missing**, type its name, confirm the match found on OpenStreetMap (or paste coordinates copied from a map), say whether it is outdoors, indoors or both, and it gets its own verdict card straight away.
 - **📈 Analytics** – built from the app's own accumulating log. One tab per metric (temperature, feels-like, humidity, wind, rain/snow, cloud cover, comfort index, feels-like delta, daily range), each with a time series and a ranking bar chart covering **all cities**, and your acceptable range shaded in green where one applies.
 - **Sidebar assumptions** – sliders for the acceptable temperature range, maximum wind and maximum rain. They drive the attraction verdicts and the green bands in Analytics.
 
-Data comes from the [OpenWeatherMap](https://openweathermap.org/api) free tier (current weather, 5-day forecast, geocoding). The free tier has no history, so every fetch is appended to `data/weather_log.csv` and the analytics grow as the log grows.
+Weather data comes from the [OpenWeatherMap](https://openweathermap.org/api) free tier (current weather, 5-day forecast, geocoding). Places users add are located with [OpenStreetMap Nominatim](https://nominatim.org/) (no key needed; data © OpenStreetMap contributors). The free tier has no history, so every fetch is appended to `data/weather_log.csv` and the analytics grow as the log grows.
 
 ## Setup
 
@@ -43,17 +43,18 @@ uv run pytest                        # run the tests (no network needed)
 │   ├── cities.csv                # 26 default cities (name, country, lat, lon)
 │   ├── attractions.csv           # 260 curated attractions (10 per city): setting (indoor/outdoor/mixed), wind sensitivity
 │   ├── user_cities.csv           # cities added through the sidebar (created on first use)
+│   ├── user_attractions.csv      # attractions added through the close-up form (created on first use)
 │   └── weather_log.csv           # our own time series, one row per city per fetch
 ├── src/weather_insights/
 │   ├── config.py                 # paths, constants, API key loading
-│   ├── models.py                 # Location, WeatherSnapshot, Assumptions, Attraction, Assessment, Verdict
-│   ├── extract.py                # JSONAPIClient (generic) -> OpenWeatherClient, RateLimiter, errors, validation, batch fetch
+│   ├── models.py                 # Location, WeatherSnapshot, Assumptions, Attraction, POICandidate, Assessment, Verdict
+│   ├── extract.py                # JSONAPIClient (generic) -> OpenWeatherClient, NominatimClient, RateLimiter, errors, validation, batch fetch
 │   ├── transform.py              # analytics, grid builder, attraction rules, forecast outlook
-│   ├── load.py                   # catalogues + CSV log (append / read)
+│   ├── load.py                   # catalogues (curated + user-added) + CSV log (append / read)
 │   ├── pipeline.py               # extract -> transform -> load jobs used by the UI and the CLI
 │   ├── charts.py                 # Plotly figure builders (incl. the world colour-field raster)
 │   └── ui.py                     # Streamlit interface (three tabs)
-├── tests/                        # pytest: hand-made cases with known answers, fake HTTP, no network
+├── tests/                        # pytest: hand-made cases with known answers, fake HTTP, headless UI tests, no network
 └── PROMPTS.md                    # log of AI-assisted work
 ```
 
@@ -61,7 +62,8 @@ uv run pytest                        # run the tests (no network needed)
 
 | Piece | Design |
 |---|---|
-| **Inheritance** | `JSONAPIClient` handles any JSON API (request, timeout, status → exception). `OpenWeatherClient` adds the OpenWeatherMap endpoints and parsing. A different provider would only need a new subclass. |
+| **Inheritance** | `JSONAPIClient` handles any JSON API (request, timeout, status → exception, optional headers, a `service_name` used in error messages). `OpenWeatherClient` adds the OpenWeatherMap endpoints and parsing; `NominatimClient` does the same for place search. A different provider would only need a new subclass. |
+| **Adding an attraction** | `NominatimClient.search_poi` looks a name up inside a box of ±0.5° around the city (English labels, at most 5 results), drops bus stops, transit stops and city outlines, and anything more than 45 km from the city centre. The user confirms a match or pastes coordinates (`parse_coordinates`, a regex). `pipeline.add_attraction` validates everything (name up to 100 characters and category up to 40, both limited to letters, digits and a little punctuation. Coordinates rounded to 4 decimals), and `load.save_user_attraction` appends to `data/user_attractions.csv`. Duplicates per city are refused, ignoring case, and saves are locked. Nominatim's usage policy is respected: one request per second and an identifying `User-Agent`. Searching needs an internet connection but typing coordinates and saving does not. |
 | **Encapsulation** | Credentials live in a name-mangled `__auth_params` and are only attached inside `_get()`; `_get`/`_check_status`/`_session` are protected for subclasses and tests; everything callers need is public. |
 | **Special methods / properties** | `WeatherSnapshot` defines `__str__`, `__repr__` and `__lt__` (so `sorted(snapshots)` goes coldest → hottest) and properties `comfort_index`, `feels_like_delta`, `precip_mm`, `local_time`. |
 | **Errors** | Bad input, bad key, unknown place, rate limit, network failure and server failure each raise their own exception with a distinct user-facing message; the key never appears in them. One failing city never stops a batch. |
@@ -72,7 +74,9 @@ uv run pytest                        # run the tests (no network needed)
 ## Known limitations
 
 - Verdicts are **weather-based advice**, not official opening information. Check the venue before travelling.
-- `data/attractions.csv` is hand-curated (coordinates and the indoor/outdoor classification should be spot-checked before submission). Cities added through the sidebar have no attractions until rows are added to that file.
+- `data/attractions.csv` is hand-curated (coordinates and the indoor/outdoor classification should be spot-checked before submission). Cities added through the sidebar have no attractions until someone adds them with the close-up form (or as rows in that file).
+- `data/user_attractions.csv` is shared by everyone who uses the same copy of the app, and it is local runtime data (it is not part of the curated 260).
+- Attractions added through the form are only as good as OpenStreetMap's data for that place. Check the matched location on the map; for a site with no match, paste coordinates yourself. The same place added under two different names is not detected.
 - OpenWeatherMap's free tier gives current conditions and a 3-hourly 5-day forecast only; there is no historical data, hence the self-built log.
 
 ## Team
