@@ -16,3 +16,4 @@ venv/
 
 # User specific files
 data/user_attractions.csv
+data/weather_log.csv
