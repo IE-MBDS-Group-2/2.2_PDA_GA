@@ -89,6 +89,7 @@ def _add_city(query: str) -> None:
 
 def _search_poi(name: str, city: Location) -> None:
     """Form action: look a typed place up and keep the matches, so the confirm step survives the rerun."""
+    st.session_state.pop("poi_search", None)  # a new search starts clean: never leave the old matches (and Save) up
     try:
         matches = pipeline.find_poi(_place_client(), name, city)
     except InvalidInputError as exc:
@@ -139,7 +140,8 @@ def _poi_confirm_form(city: Location, search: dict) -> None:
     with st.form(f"poi_save_{sid}"):
         name = st.text_input("Name shown in the app", value=search["name"], max_chars=100, key=f"poi_name_{sid}")
         c1, c2, c3 = st.columns([2, 2, 1])
-        category = c1.text_input("Category", value=match.suggested_category if match else "Other", max_chars=40,
+        category = c1.text_input("Category", value=match.suggested_category if match else "Other",
+                                 max_chars=pipeline.MAX_CATEGORY_LEN,
                                  key=f"poi_category_{sid}_{choice_id}",
                                  help="A short label such as Museum or Park (suggested from OpenStreetMap; change it freely).")
         setting = c2.selectbox("Setting", pipeline.SETTINGS, key=f"poi_setting_{sid}",
@@ -160,7 +162,9 @@ def _poi_confirm_form(city: Location, search: dict) -> None:
 def _add_attraction_panel(city: Location) -> None:
     """Close-up tab: add a place that is missing from the curated list, found by name."""
     search = st.session_state.get("poi_search")
-    search = search if search and search["city"] == city.city else None
+    if search and search["city"] != city.city:  # the user moved to another city: the matches no longer apply
+        st.session_state.pop("poi_search")
+        search = None
     # Messages appear here, next to the form, not at the top of the page where they could be scrolled away.
     message = st.session_state.pop("poi_flash", None)
     with st.expander("➕ Add an attraction that is missing", expanded=search is not None or message is not None):

@@ -62,12 +62,20 @@ def find_poi(client: NominatimClient, name: str, city: Location) -> list[POICand
 
 
 def _clean_category(raw: str) -> str:
+    """Tidy a category label ("Other" if blank) or raise InvalidInputError.
+
+    The label is shown with st.markdown and stored in a CSV, so it gets the same character rules as a
+    place name (no brackets or backticks, which would make links or formatting), plus two more checks.
+    """
     category = " ".join(str(raw or "").split()) or "Other"
     if len(category) > MAX_CATEGORY_LEN:
         raise InvalidInputError(f"That category is too long ({MAX_CATEGORY_LEN} characters max).")
     if category[0] in "=+-@":  # spreadsheet programs treat these as the start of a formula
         raise InvalidInputError("A category cannot start with = + - or @.")
-    return category
+    try:
+        return validate_poi_name(category)
+    except InvalidInputError as exc:
+        raise InvalidInputError(f"Category: {exc}") from None
 
 
 def add_attraction(city: Location, name: str, category: str, setting: str, wind_sensitive: bool,

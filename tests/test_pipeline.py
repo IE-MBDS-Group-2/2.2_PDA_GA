@@ -62,11 +62,36 @@ def test_input_is_cleaned_before_saving(files):
     ({"lat": "abc"}, "must be numbers"),
     ({"category": "x" * 41}, "too long"),
     ({"category": "=SUM(A1)"}, "cannot start with"),
+    ({"category": "+1 555 0100"}, "cannot start with"),
+    # The category is drawn with st.markdown on the card, so markup must never get through.
+    ({"category": "[click me](http://evil.example)"}, "Category.*cannot contain"),
+    ({"category": ":red[ALERT]"}, "Category.*cannot contain"),
+    ({"category": "`code`"}, "Category.*cannot contain"),
 ])
 def test_bad_input_is_rejected_and_nothing_is_written(files, overrides, message):
     with pytest.raises(InvalidInputError, match=message):
         add(files, **overrides)
     assert not files[1].exists()  # the user file was never created
+
+
+@pytest.mark.parametrize("category", ["Theme Park", "Café & Bar", "Pier 39", "Museum (art)"])
+def test_ordinary_categories_are_accepted(files, category):
+    attraction, is_new = add(files, category=category)
+    assert is_new and attraction.category == category
+
+
+def test_an_attraction_with_a_curated_name_is_not_added_again(files):
+    _, is_new = add(files, name="Retiro Park")  # already in the curated file
+    assert is_new is False
+    assert not files[1].exists()  # nothing was written
+
+
+@pytest.mark.parametrize("setting, wind_sensitive", [("mixed", False), ("indoor", True), ("outdoor", False)])
+def test_every_setting_and_wind_flag_is_stored_as_given(files, setting, wind_sensitive):
+    attraction, _ = add(files, setting=setting, wind_sensitive=wind_sensitive)
+    stored = load.load_attractions(*files)[-1]  # read back from the file, not just the returned object
+    assert (stored.setting, stored.wind_sensitive) == (setting, wind_sensitive)
+    assert (attraction.setting, attraction.wind_sensitive) == (setting, wind_sensitive)
 
 
 def test_search_then_save_end_to_end(files):
