@@ -112,6 +112,19 @@ def validate_coordinates(lat: float, lon: float) -> tuple[float, float]:
     return lat, lon
 
 
+# Two signed decimals split by a comma, semicolon or whitespace: "40.4241, -3.7176" or "40.4241 -3.7176".
+# The separator is required so that "1234" is never read as "123" and "4".
+_LAT_LON = re.compile(r"^\s*(-?\d+(?:\.\d+)?)(?:\s*[,;]\s*|\s+)(-?\d+(?:\.\d+)?)\s*$")
+
+
+def parse_coordinates(raw: str) -> tuple[float, float]:
+    """Read a 'latitude, longitude' pair as copied from a map app. Raises InvalidInputError."""
+    match = _LAT_LON.match(str(raw or ""))
+    if not match:
+        raise InvalidInputError('Type the coordinates as "latitude, longitude", for example 40.4241, -3.7176.')
+    return float(match[1]), float(match[2])
+
+
 def validate_poi_coordinates(city: Location, lat: float, lon: float) -> tuple[float, float]:
     """Hand-typed coordinates (e.g. copied from Google Maps) must be real and close to the city."""
     lat, lon = validate_coordinates(lat, lon)

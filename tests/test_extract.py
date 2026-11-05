@@ -5,7 +5,8 @@ from conftest import FakeResponse, FakeSession, owm_payload, MADRID
 from weather_insights.extract import (
     APIError, InvalidAPIKeyError, InvalidInputError, JSONAPIClient, LocationNotFoundError,
     NetworkError, NominatimClient, OpenWeatherClient, RateLimiter, RateLimitError, ServerError,
-    fetch_many, validate_city_name, validate_coordinates, validate_poi_coordinates, validate_poi_name,
+    fetch_many, parse_coordinates, validate_city_name, validate_coordinates, validate_poi_coordinates,
+    validate_poi_name,
 )
 from weather_insights.config import NOMINATIM_PERIOD_S, NOMINATIM_USER_AGENT, POI_MAX_RESULTS
 from weather_insights.models import Location
@@ -343,6 +344,24 @@ def test_search_is_limited_to_one_request_per_period():
 
 
 # ---- hand-typed coordinates for a place ----
+@pytest.mark.parametrize("text, expected", [
+    ("40.4241, -3.7176", (40.4241, -3.7176)),   # as copied from Google Maps
+    ("40.4241,-3.7176", (40.4241, -3.7176)),
+    ("  40.4241 ; -3.7176 ", (40.4241, -3.7176)),
+    ("40.4241 -3.7176", (40.4241, -3.7176)),     # space only
+    ("-33.8568, 151.2153", (-33.8568, 151.2153)),
+    ("40, -3", (40.0, -3.0)),
+])
+def test_coordinates_are_read_from_a_pasted_pair(text, expected):
+    assert parse_coordinates(text) == expected
+
+
+@pytest.mark.parametrize("bad", ["", None, "40.4241", "1234", "abc, def", "40.4241, -3.7176, 5", "40,4241, -3,7176 x"])
+def test_unreadable_coordinate_text_is_rejected(bad):
+    with pytest.raises(InvalidInputError, match="latitude, longitude"):
+        parse_coordinates(bad)
+
+
 def test_poi_coordinates_near_the_city_are_accepted_and_rounded():
     assert validate_poi_coordinates(MADRID, "40.424111", "-3.717611") == (40.4241, -3.7176)
 
