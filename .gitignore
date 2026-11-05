@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+.venv/
+env/
+venv/
+.env
+.DS_Store
+.pytest_cache/
+*.egg-info/
+.idea/
+
+# Adding examples from class git walkthrough
+*.ipynb
+*.db
+.claude/
+
+# User specific files
+data/user_attractions.csv
+data/weather_log.csv
