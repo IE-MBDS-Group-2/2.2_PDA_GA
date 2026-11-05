@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import csv
+import threading
 from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
 
-from .config import ATTRACTIONS_CSV, CITIES_CSV, LOG_CSV, MIN_LOG_INTERVAL_MIN, USER_CITIES_CSV
+from .config import (
+    ATTRACTIONS_CSV, CITIES_CSV, LOG_CSV, MIN_LOG_INTERVAL_MIN, USER_ATTRACTIONS_CSV, USER_CITIES_CSV,
+)
 from .models import LOG_COLUMNS, Attraction, Location, WeatherSnapshot
 from .transform import add_derived_metrics
 
@@ -39,14 +42,49 @@ def save_user_city(location: Location, user_csv: Path = USER_CITIES_CSV) -> bool
     return True
 
 
-def load_attractions(path: Path = ATTRACTIONS_CSV) -> list[Attraction]:
-    if not Path(path).exists():
+_SAVE_LOCK = threading.Lock()
+
+
+def _read_attractions(path: Path) -> list[Attraction]:
+    """Attractions from one CSV file; an empty list if the file is missing or empty."""
+    path = Path(path)
+    if not path.exists() or path.stat().st_size == 0:
         return []
-    df = pd.read_csv(path)
+    # Read every column as text: by default pandas turns values such as "None", "NA" or "" into NaN,
+    # which would break a place called "None". Numbers are converted explicitly below.
+    df = pd.read_csv(path, dtype=str, keep_default_na=False)
     return [
         Attraction(r.city, r.name, r.category, r.setting, str(r.wind_sensitive).lower() == "true", float(r.lat), float(r.lon))
         for r in df.itertuples()
     ]
+
+
+def load_attractions(path: Path = ATTRACTIONS_CSV, user_csv: Path = USER_ATTRACTIONS_CSV) -> list[Attraction]:
+    """Curated attractions followed by the ones users added (duplicates removed, curated wins)."""
+    unique: dict[tuple[str, str], Attraction] = {}
+    for source in (path, user_csv):
+        for a in _read_attractions(source):
+            unique.setdefault((a.city, a.name.casefold()), a)
+    return list(unique.values())
+
+
+def save_user_attraction(attraction: Attraction, user_csv: Path = USER_ATTRACTIONS_CSV,
+                         curated_csv: Path = ATTRACTIONS_CSV) -> bool:
+    """Remember a user-added attraction. Returns False if that city already has one with this name."""
+    key = (attraction.city, attraction.name.casefold())
+    user_csv = Path(user_csv)
+    with _SAVE_LOCK:  # Streamlit runs sessions in threads: check and write must not interleave
+        if any((a.city, a.name.casefold()) == key for a in load_attractions(curated_csv, user_csv)):
+            return False
+        user_csv.parent.mkdir(parents=True, exist_ok=True)
+        needs_header = not user_csv.exists() or user_csv.stat().st_size == 0
+        with open(user_csv, "a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            if needs_header:
+                writer.writerow(["city", "name", "category", "setting", "wind_sensitive", "lat", "lon"])
+            writer.writerow([attraction.city, attraction.name, attraction.category, attraction.setting,
+                             str(attraction.wind_sensitive).lower(), attraction.lat, attraction.lon])
+    return True
 
 
 # ---- the weather log (our own time series) --------------------------------------------------------
