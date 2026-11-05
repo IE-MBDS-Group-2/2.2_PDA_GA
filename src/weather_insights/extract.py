@@ -162,6 +162,7 @@ class JSONAPIClient:
         if status == 200:
             return
         if status in (401, 403):
+            # hook for 401/403 text: subclasses with an API key give a better hint
             raise InvalidAPIKeyError(self._rejected_message(status))
         if status == 404:
             raise LocationNotFoundError(f"The {self.service_name} could not find that {what}.")

@@ -175,3 +175,39 @@ def test_client_uses_the_limiter_and_it_is_shared_by_every_call():
     c.current(MADRID); c.current(MADRID); c.current(MADRID)
     assert clock.now == 10  # calls 2 and 3 each waited for the 5 s window
     assert isinstance(OpenWeatherClient(KEY)._limiter, RateLimiter)  # on by default
+
+
+# ---- base client: custom headers and provider-specific error wording ----
+def test_configured_headers_are_sent_with_every_request():
+    """Tests that the base client passes headers to the session.get() call"""
+    session = FakeSession(FakeResponse(200, {}))
+    JSONAPIClient("https://example.com/api", headers={"User-Agent": "demo/1.0"}, session=session)._get("ping")
+    assert session.last_headers == {"User-Agent": "demo/1.0"}
+
+
+def test_no_headers_means_no_headers_argument():
+    """No headers passsed when none configured"""
+    session = FakeSession(FakeResponse(200, {}))
+    JSONAPIClient("https://example.com/api", session=session)._get("ping")
+    assert session.last_headers is None  # nothing extra passed to session.get
+
+
+def test_error_messages_name_the_service_that_failed():
+    """Confirms custom service_name is used in the error message, not a generic "API" or "weather"."""
+    class PlaceClient(JSONAPIClient):
+        service_name = "place search service"
+
+    for status, fragment in [(403, "refused the request (HTTP 403)"), (429, "Too many requests"),
+                             (500, "having problems"), (418, "Unexpected answer")]:
+        with pytest.raises(APIError) as info:
+            PlaceClient("https://example.com", session=FakeSession(FakeResponse(status, {})))._get("x")
+        assert "place search service" in str(info.value) and fragment in str(info.value)
+        assert "weather" not in str(info.value)
+
+
+def test_openweather_keeps_its_own_wording():
+    """Confirms that OpenWeatherClient subclasses JSONAPIClient and overrides the 401/403 message."""
+    with pytest.raises(InvalidAPIKeyError, match="OPENWEATHER_API_KEY"):
+        client(FakeResponse(401, {})).current(MADRID)
+    with pytest.raises(NetworkError, match="weather service"):
+        client(requests.Timeout("t")).current(MADRID)
