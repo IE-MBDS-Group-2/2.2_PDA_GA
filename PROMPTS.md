@@ -129,3 +129,28 @@ Entries marked **Group review** need a group member to confirm or change the "Ke
 **Checked:** 106 tests (3 new/changed: fixed scales by default, fitted scales follow the data, 0 and 38 °C map exactly to the end colours of the ramp). Rendered the world field from our real `weather_log.csv` with the 0–38 scale and looked at it. Streamlit/Plotly rendering itself still could not be run in the build sandbox.
 
 **Kept as-is / changed / rejected:** Kept. **Group review:** the ranges for wind (20 m/s), rain (5 mm/h) and the 0–100 scales are Claude's choices; adjust `COLOUR_RANGES` if the group prefers others.
+
+---
+
+## Proposal: rider tooling (motorcycle "Ride check") – idea and suggested features
+
+*Branch `migs`. Agent for this entry: Claude (Claude Code session, model `claude-opus-5-5`). Brainstorm only: no code was written.*
+
+**Asked:** Miguel's idea: extend the app with tooling for motorcycle riders, answering "do I need a jacket?" from the temperature, plus visibility, crosswind and gear advice, and (1) adding POIs through the UI. Then: "Any other suggestions?" for features that fit the existing app.
+
+**Got:** Claude read the code on `raja` and pointed out that a ride check is the same shape as an attraction check (weather at a place + limits -> ✅/⚠️/⛔ verdict with reasons), so most of the machinery can be reused. Suggested features, in priority order:
+1. `RiderProfile` frozen dataclass (riding speed, bike type / wind protection, cold tolerance, gear owned), set from sidebar sliders, built like `Assumptions`.
+2. Feels-like at riding speed: wind chill using riding speed plus ambient wind (OpenWeatherMap's `feels_like` only uses ambient wind), mapped to layers (thermal / lined / vented / mesh + hydration warning).
+3. Crosswind: wind × sin(angle between wind direction and heading), with a separate gust threshold; without a route, report the worst headings.
+4. Visibility and visor advice from the stored `visibility` and fog/mist condition codes (7xx): clear visor and lights under 1 km, Pinlock when cold and humid, tinted visor in clear sun.
+5. Road surface: ice risk below 3 °C, snow = no-go, "rained in the last 3 h" = wet roads.
+6. Gear checklist combining 2-5, shown with the existing `Assessment` / verdict-card style.
+7. Best time to ride: reuse `visit_outlook` / `best_day` over the 5-day forecast for an hour-by-hour Good / Marginal / No-go strip.
+8. Add POIs via the UI (Miguel's idea): `geocode()` -> `user_attractions.csv`, like `save_user_city()`. This also fixes the README limitation that cities added from the sidebar have no attractions.
+9. Stretch: route check, sampling points between two places with the existing `haversine_km`, `fetch_many` and `RateLimiter`; the route gives the heading, which makes the crosswind exact.
+
+Proposed placement: a fourth `🏍️ Ride check` tab and a "Rider" sidebar section; rules in `transform.py` (or a new `ride.py`); hand-worked tests in `tests/test_ride.py`. Pitch angle: the engine that decides whether a cable car runs also tells a delivery rider whether to go out.
+
+**Checked:** Read `models.py`, `extract.py`, `config.py`, `main.py`, the README and the module outlines. Found one prerequisite: `WeatherSnapshot` stores `wind_speed` but not wind direction (`wind.deg`) or gusts (`wind.gust`), which OpenWeatherMap already returns; crosswind needs both. Adding them changes `LOG_COLUMNS`, so `load.py` must tolerate older log rows without those columns.
+
+**Kept as-is / changed / rejected:** Not built yet. **Group review:** decide which features to build (1-6 fit one PR; 7 reuses existing code; 8 and 9 are separate add-ons), and agree on the rider thresholds (wind-chill bands, crosswind / gust limits, ice temperature) before they are coded.

@@ -154,7 +154,7 @@ class JSONAPIClient:
         if status in (401, 403):
             raise InvalidAPIKeyError(
                 "The weather service rejected the API key. Check OPENWEATHER_API_KEY in "
-                "variables.env (new keys can take up to two hours to activate)."
+                ".env (new keys can take up to two hours to activate)."
             )
         if status == 404:
             raise LocationNotFoundError(f"The weather service could not find that {what}.")

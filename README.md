@@ -15,10 +15,10 @@ Requires [uv](https://docs.astral.sh/uv/) and Python 3.11+.
 
 ```bash
 uv sync                                   # creates .venv and installs the package + dependencies
-cp variables.env.example variables.env    # then paste your own OpenWeatherMap key into variables.env
+cp .env.example .env                      # then paste your own OpenWeatherMap key into .env
 ```
 
-`variables.env` is git-ignored. The key is read with `python-dotenv`, is never printed, and is never shown in the UI. New OpenWeatherMap keys can take up to two hours to activate.
+`.env` is git-ignored. The key is read with `python-dotenv`, is never printed, and is never shown in the UI. New OpenWeatherMap keys can take up to two hours to activate.
 
 ## Run
 
@@ -38,7 +38,7 @@ uv run pytest                        # run the tests (no network needed)
 .
 ├── main.py                       # orchestrator: launches the app, or --refresh for the CLI job
 ├── pyproject.toml                # installable package (src layout) + dependencies
-├── variables.env.example         # copy to variables.env (git-ignored) and add your key
+├── .env.example                  # copy to .env (git-ignored) and add your key
 ├── data/
 │   ├── cities.csv                # 26 default cities (name, country, lat, lon)
 │   ├── attractions.csv           # 260 curated attractions (10 per city): setting (indoor/outdoor/mixed), wind sensitivity

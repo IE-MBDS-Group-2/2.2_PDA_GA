@@ -1,6 +1,6 @@
 """Paths and environment configuration.
 
-The API key is read from the environment (``variables.env`` via python-dotenv) and is
+The API key is read from the environment (``.env`` via python-dotenv) and is
 never hardcoded, logged, or shown in the UI.
 """
 
@@ -25,7 +25,7 @@ CACHE_TTL_S = 600  # OpenWeatherMap refreshes current data roughly every 10 minu
 MAX_CALLS_PER_MINUTE = 50  # OpenWeatherMap's free plan allows 60; keep some headroom
 MIN_LOG_INTERVAL_MIN = 10  # do not log the same city twice inside this window
 
-load_dotenv(PROJECT_ROOT / "variables.env")
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 class MissingAPIKeyError(RuntimeError):
@@ -37,7 +37,7 @@ def get_api_key() -> str:
     key = (os.getenv("OPENWEATHER_API_KEY") or "").strip()
     if not key or key == "your_key_here":
         raise MissingAPIKeyError(
-            "OPENWEATHER_API_KEY is not set. Copy variables.env.example to variables.env "
+            "OPENWEATHER_API_KEY is not set. Copy .env.example to .env "
             "and paste your own OpenWeatherMap key into it."
         )
     return key
