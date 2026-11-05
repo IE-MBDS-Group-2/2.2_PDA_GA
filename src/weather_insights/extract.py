@@ -112,11 +112,14 @@ class RateLimiter:
 class JSONAPIClient:
     """Reusable GET-JSON client with provider-independent error handling."""
 
+    service_name = "service"  # how error messages refer to the provider; subclasses override
+
     def __init__(self, base_url: str, auth_params: dict | None = None,
                  timeout: float = REQUEST_TIMEOUT_S, session: requests.Session | None = None,
-                 limiter: RateLimiter | None = None):
+                 limiter: RateLimiter | None = None, headers: dict | None = None):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self._headers = dict(headers or {})  # sent with every request (e.g. a User-Agent)
         self._limiter = limiter  # optional: provider-specific request budget, shared by all calls
         # Name-mangled on purpose: credentials must not be reachable by accident (vars(), repr,
         # subclass code, debugging dumps). Only _get() below adds them to outgoing requests.
@@ -132,42 +135,52 @@ class JSONAPIClient:
         query = {**(params or {}), **self.__auth_params}
         if self._limiter is not None:
             self._limiter.acquire()
+        extra = {"headers": self._headers} if self._headers else {}  # only when configured
         try:
-            response = self._session.get(url, params=query, timeout=self.timeout)
+            response = self._session.get(url, params=query, timeout=self.timeout, **extra)
         except requests.Timeout:
-            raise NetworkError("The weather service took too long to answer. Try again.") from None
+            raise NetworkError(f"The {self.service_name} took too long to answer. Try again.") from None
         except requests.ConnectionError:
-            raise NetworkError("Could not reach the weather service. Check your internet connection.") from None
+            raise NetworkError(f"Could not reach the {self.service_name}. Check your internet connection.") from None
         except requests.RequestException as exc:
             # `from None` + no str(exc): the exception text contains the full URL (with the key).
-            raise NetworkError(f"Network problem while contacting the weather service ({type(exc).__name__}).") from None
+            raise NetworkError(
+                f"Network problem while contacting the {self.service_name} ({type(exc).__name__})."
+            ) from None
         self._check_status(response, what)
         try:
             return response.json()
         except ValueError:
-            raise ServerError("The weather service sent a response we could not read.") from None
+            raise ServerError(f"The {self.service_name} sent a response we could not read.") from None
+
+    def _rejected_message(self, status: int) -> str:
+        """Text for HTTP 401/403. Subclasses with an API key give a more helpful hint."""
+        return f"The {self.service_name} refused the request (HTTP {status})."
 
     def _check_status(self, response, what: str) -> None:
         status = response.status_code
         if status == 200:
             return
         if status in (401, 403):
-            raise InvalidAPIKeyError(
-                "The weather service rejected the API key. Check OPENWEATHER_API_KEY in "
-                ".env (new keys can take up to two hours to activate)."
-            )
+            raise InvalidAPIKeyError(self._rejected_message(status))
         if status == 404:
-            raise LocationNotFoundError(f"The weather service could not find that {what}.")
+            raise LocationNotFoundError(f"The {self.service_name} could not find that {what}.")
         if status == 429:
-            raise RateLimitError("Too many requests for the free API plan. Wait a minute and retry.")
+            raise RateLimitError(f"Too many requests to the {self.service_name}. Wait a minute and retry.")
         if status >= 500:
-            raise ServerError(f"The weather service is having problems (HTTP {status}). Try again later.")
-        raise APIError(f"Unexpected answer from the weather service (HTTP {status}).")
+            raise ServerError(f"The {self.service_name} is having problems (HTTP {status}). Try again later.")
+        raise APIError(f"Unexpected answer from the {self.service_name} (HTTP {status}).")
 
 
 # ---- OpenWeatherMap --------------------------------------------------------------------------
 class OpenWeatherClient(JSONAPIClient):
     """Knows the OpenWeatherMap endpoints and how to turn them into domain objects."""
+
+    service_name = "weather service"
+
+    def _rejected_message(self, status: int) -> str:
+        return ("The weather service rejected the API key. Check OPENWEATHER_API_KEY in "
+                ".env (new keys can take up to two hours to activate).")
 
     def __init__(self, api_key: str, **kwargs):
         if not api_key or not str(api_key).strip():
