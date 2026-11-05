@@ -13,3 +13,6 @@ venv/
 *.ipynb
 *.db
 .claude/
+
+# User specific files
+data/user_attractions.csv
