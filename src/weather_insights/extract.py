@@ -112,6 +112,18 @@ def validate_coordinates(lat: float, lon: float) -> tuple[float, float]:
     return lat, lon
 
 
+def validate_poi_coordinates(city: Location, lat: float, lon: float) -> tuple[float, float]:
+    """Hand-typed coordinates (e.g. copied from Google Maps) must be real and close to the city."""
+    lat, lon = validate_coordinates(lat, lon)
+    km = haversine_km(city.lat, city.lon, lat, lon)
+    if km > POI_MAX_KM_FROM_CITY:
+        raise InvalidInputError(
+            f"That point is {km:.0f} km from {city.city}. Places must be within "
+            f"{POI_MAX_KM_FROM_CITY} km of the city centre."
+        )
+    return round(lat, 4), round(lon, 4)
+
+
 # ---- rate limiting -----------------------------------------------------------------------------------
 class RateLimiter:
     """Sliding-window limiter shared by every thread: at most ``max_calls`` per ``period`` seconds.

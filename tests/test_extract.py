@@ -5,7 +5,7 @@ from conftest import FakeResponse, FakeSession, owm_payload, MADRID
 from weather_insights.extract import (
     APIError, InvalidAPIKeyError, InvalidInputError, JSONAPIClient, LocationNotFoundError,
     NetworkError, NominatimClient, OpenWeatherClient, RateLimiter, RateLimitError, ServerError,
-    fetch_many, validate_city_name, validate_coordinates, validate_poi_name,
+    fetch_many, validate_city_name, validate_coordinates, validate_poi_coordinates, validate_poi_name,
 )
 from weather_insights.config import NOMINATIM_PERIOD_S, NOMINATIM_USER_AGENT, POI_MAX_RESULTS
 from weather_insights.models import Location
@@ -340,3 +340,21 @@ def test_search_unexpected_answer_is_a_server_error(answer):
 def test_search_is_limited_to_one_request_per_period():
     limiter = NominatimClient()._limiter
     assert (limiter.max_calls, limiter.period) == (1, NOMINATIM_PERIOD_S)
+
+
+# ---- hand-typed coordinates for a place ----
+def test_poi_coordinates_near_the_city_are_accepted_and_rounded():
+    assert validate_poi_coordinates(MADRID, "40.424111", "-3.717611") == (40.4241, -3.7176)
+
+
+def test_poi_coordinates_at_the_distance_limit():
+    # 0.4 degrees of latitude is about 44.5 km (inside the 45 km limit); 0.5 degrees is about 55.6 km.
+    assert validate_poi_coordinates(MADRID, MADRID.lat + 0.4, MADRID.lon) is not None
+    with pytest.raises(InvalidInputError, match="56 km from Madrid"):
+        validate_poi_coordinates(MADRID, MADRID.lat + 0.5, MADRID.lon)
+
+
+@pytest.mark.parametrize("lat, lon", [(95, 0), ("abc", 0), (None, None)])
+def test_poi_coordinates_must_be_real_numbers(lat, lon):
+    with pytest.raises(InvalidInputError):
+        validate_poi_coordinates(MADRID, lat, lon)
