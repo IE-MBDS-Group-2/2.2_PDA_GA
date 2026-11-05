@@ -1,6 +1,6 @@
 # AI collaboration log
 
-One entry per feature, in the order the work was done. Agent: Claude (Claude Code session, model `claude-sonnet-5-5`).
+One entry per feature, in the order the work was done. Earlier entries use Claude (Claude Code session, model `claude-sonnet-5-5`). Later entries identify their agent separately.
 Entries marked **Group review** need a group member to confirm or change the "Kept / changed" line after reading the code.
 
 ## Feature: project scope and structure
@@ -129,3 +129,18 @@ Entries marked **Group review** need a group member to confirm or change the "Ke
 **Checked:** 106 tests (3 new/changed: fixed scales by default, fitted scales follow the data, 0 and 38 °C map exactly to the end colours of the ramp). Rendered the world field from our real `weather_log.csv` with the 0–38 scale and looked at it. Streamlit/Plotly rendering itself still could not be run in the build sandbox.
 
 **Kept as-is / changed / rejected:** Kept. **Group review:** the ranges for wind (20 m/s), rain (5 mm/h) and the 0–100 scales are Claude's choices; adjust `COLOUR_RANGES` if the group prefers others.
+
+
+---
+
+## Feature: Farah — setup instructions and troubleshooting (2026-11-05)
+
+**Agent:** OpenAI Codex.
+
+**Asked:** Make a small contribution on Farah's branch by improving setup instructions, adding troubleshooting for missing API keys, invalid city names and empty history, and recording the assistance.
+
+**Got:** README instructions for cloning the Farah branch, selecting the project folder, checking prerequisites, configuring the key and handling common startup/data problems. Codex drafted the documentation after reading the configuration, API errors, UI and command-line entry point.
+
+**Checked:** Confirmed the Python requirement and test dependency in `pyproject.toml`, key loading and placeholder detection in `config.py`, error messages in `extract.py`, empty-history guidance in `ui.py`, and refresh behavior in `main.py`. Initial prerequisite checks found no uv executable and Python 3.10 as the default Python. Installed uv and Python 3.11 in the local Codex tools folder and installed the locked dependencies successfully. The existing test suite returned 103 passed and 3 failed. All three failures concern shipped catalogue consistency: Washington D.C. and Abu Dhabi have attractions but are absent from the loaded city catalogue. The CLI refresh and Streamlit AppTest both displayed the expected missing-key error without an unhandled exception. Live weather fetching and a full browser-based visual review remain unverified.
+
+**Kept / changed / rejected:** Kept the focused setup and troubleshooting documentation. Clarified that copying the example environment file is a first-setup step and that an existing environment variable takes precedence. Farah's personal review of the wording remains pending. The catalogue failures are recorded for the group's follow-up.

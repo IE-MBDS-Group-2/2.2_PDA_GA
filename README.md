@@ -11,12 +11,23 @@ Data comes from the [OpenWeatherMap](https://openweathermap.org/api) free tier (
 
 ## Setup
 
-Requires [uv](https://docs.astral.sh/uv/) and Python 3.11+.
+Requires Git, [uv](https://docs.astral.sh/uv/getting-started/installation/) and Python 3.11+. Install uv using its official installation instructions, then check `uv --version` in a new terminal. If you need a compatible Python version, run `uv python install 3.11`.
+
+For a fresh copy, clone the repository and enter its folder before running the setup commands. To work on Farah's contribution, use the `Farah` branch.
+
+```bash
+git clone --branch Farah https://github.com/IE-MBDS-Group-2/2.2_PDA_GA.git
+cd 2.2_PDA_GA
+```
+
+If you already have a clone, open a terminal in that project folder. All commands below run from the folder containing `pyproject.toml` and `main.py`.
 
 ```bash
 uv sync                                   # creates .venv and installs the package + dependencies
 cp variables.env.example variables.env    # then paste your own OpenWeatherMap key into variables.env
 ```
+
+Copy `variables.env.example` only on first setup. Open `variables.env` in your editor and replace `your_key_here` with your own key on the `OPENWEATHER_API_KEY` line.
 
 `variables.env` is git-ignored. The key is read with `python-dotenv`, is never printed, and is never shown in the UI. New OpenWeatherMap keys can take up to two hours to activate.
 
@@ -31,6 +42,21 @@ uv run pytest                        # run the tests (no network needed)
 **Building the history.** Run `main.py --refresh` on a schedule (cron on macOS/Linux, Task Scheduler on Windows; hourly is plenty) so `data/weather_log.csv` accumulates real observations. Commit the log: the Analytics tab is only as interesting as the history behind it. The same city is never logged twice within 10 minutes.
 
 **Rate limits.** The free plan allows 60 calls/minute. The world tab uses one call per tracked city; the close-up uses grid² calls (25 by default, up to 100). The client paces itself to at most 50 calls per minute (`RateLimiter` in `extract.py`), so a big grid is slowed down instead of being rejected: 100 calls take about two minutes the first time. Results are cached for 10 minutes; use *Refresh live data* in the sidebar to force a fetch.
+
+## Troubleshooting
+
+| What you see | What to do |
+|---|---|
+| `uv` is not found | Install uv from the setup link above, reopen the terminal, and check `uv --version`. |
+| Python version is incompatible | The package requires Python 3.11 or newer. Run `uv python install 3.11`, then `uv sync` from the project folder. |
+| `OPENWEATHER_API_KEY is not set` | Check that `variables.env` is in the project root and contains your key instead of `your_key_here`. Restart the app after editing it. An existing environment variable takes precedence over the file. |
+| The weather service rejected the API key | Check the key in your OpenWeatherMap account and the value configured locally. A newly created key may need time to activate. |
+| A city name is rejected or no city is found | Enter a non-empty name with letters and check the spelling. Try a city with its country code, such as `Madrid,ES`, to make the search more specific. |
+| No city could be loaded | Expand the list of locations that could not be loaded to read the individual errors. Check your connection for network errors, wait a minute for a rate-limit error, or retry later for a service error. |
+| Analytics says the weather log is empty | With a working API key, open World overview or run `uv run python main.py --refresh` to collect observations. Later successful fetches build the history in `data/weather_log.csv`. |
+| Refreshing adds no new rows | The app skips repeat observations for a city within 10 minutes. Wait before collecting again. A useful trend also needs observations from different times. |
+
+Run `uv run pytest` to check the existing automated tests. They use fake API responses and require no real API key or live weather requests.
 
 ## Project structure
 
