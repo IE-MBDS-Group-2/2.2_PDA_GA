@@ -4,9 +4,10 @@ import requests
 from conftest import FakeResponse, FakeSession, owm_payload, MADRID
 from weather_insights.extract import (
     APIError, InvalidAPIKeyError, InvalidInputError, JSONAPIClient, LocationNotFoundError,
-    NetworkError, OpenWeatherClient, RateLimiter, RateLimitError, ServerError, fetch_many,
-    validate_city_name, validate_coordinates,
+    NetworkError, NominatimClient, OpenWeatherClient, RateLimiter, RateLimitError, ServerError,
+    fetch_many, validate_city_name, validate_coordinates, validate_poi_name,
 )
+from weather_insights.config import NOMINATIM_PERIOD_S, NOMINATIM_USER_AGENT, POI_MAX_RESULTS
 from weather_insights.models import Location
 
 KEY = "SECRET123KEY"
@@ -211,3 +212,108 @@ def test_openweather_keeps_its_own_wording():
         client(FakeResponse(401, {})).current(MADRID)
     with pytest.raises(NetworkError, match="weather service"):
         client(requests.Timeout("t")).current(MADRID)
+
+
+# ---- Tests for finding a named place (Nominatim) ----
+def hit(name="Templo de Debod, Madrid", lat="40.4241", lon="-3.7176", category="tourism", type_="museum"):
+    """One entry of a Nominatim search answer (it sends coordinates as strings)."""
+    return {"display_name": name, "lat": lat, "lon": lon, "category": category, "type": type_}
+
+
+def place_client(*responses):
+    return NominatimClient(session=FakeSession(*responses))
+
+
+@pytest.mark.parametrize("bad", ["", "   ", None, "1234", "Museo <del> Prado", "x" * 101, "!!!"])
+def test_invalid_place_names_rejected(bad):
+    with pytest.raises(InvalidInputError):
+        validate_poi_name(bad)
+
+
+def test_valid_place_names_cleaned():
+    assert validate_poi_name("  Museo   del Prado ") == "Museo del Prado"
+    assert validate_poi_name("Torre 2") == "Torre 2"  # digits are fine for places, unlike cities
+    assert validate_poi_name("St. Paul's Cathedral") == "St. Paul's Cathedral"
+    assert validate_poi_name("Arc de Triomphe (Paris)") == "Arc de Triomphe (Paris)"
+    assert validate_poi_name("浅草寺") == "浅草寺"  # letters from any alphabet
+    assert validate_poi_name("Museo\t\tdel\nPrado") == "Museo del Prado"  # tabs/newlines collapse
+
+
+def test_invalid_characters_are_listed_in_the_error():
+    with pytest.raises(InvalidInputError, match="cannot contain: < > _"):
+        validate_poi_name("Museo_<del>")
+
+
+def test_search_returns_candidates_with_distance_from_the_city():
+    (found,) = place_client(FakeResponse(200, [hit()])).search_poi("Templo de Debod", MADRID)
+    assert found.label == "Templo de Debod, Madrid"
+    assert (found.lat, found.lon) == (40.4241, -3.7176)
+    assert found.km_from_city == pytest.approx(1.4, abs=0.1)
+    assert found.suggested_category == "Museum"
+
+
+def test_search_drops_bus_stops_and_matches_far_from_the_city():
+    paris = hit("Templo de Debod, Paris", lat="48.8566", lon="2.3522")
+    stop = hit("Templo de Debod, bus stop", category="highway", type_="bus_stop")
+    station = hit("Templo de Debod, station", category="railway", type_="station")
+    answer = [stop, paris, station, hit()]
+    found = place_client(FakeResponse(200, answer)).search_poi("Templo de Debod", MADRID)
+    assert [c.label for c in found] == ["Templo de Debod, Madrid"]
+
+
+def test_search_keeps_the_providers_order():
+    answer = [hit("First"), hit("Second", lat="40.5"), hit("Third", lat="40.3")]
+    found = place_client(FakeResponse(200, answer)).search_poi("Museo", MADRID)
+    assert [c.label for c in found] == ["First", "Second", "Third"]
+
+
+def test_search_with_no_results_is_an_empty_list_not_an_error():
+    assert place_client(FakeResponse(200, [])).search_poi("Zzqxv Plorfington Hall", MADRID) == []
+
+
+def test_search_asks_nominatim_for_english_results_inside_the_city_box():
+    c = place_client(FakeResponse(200, []))
+    c.search_poi("  Retiro   Park ", MADRID)
+    url, params = c._session.calls[0]
+    assert url == "https://nominatim.openstreetmap.org/search"
+    assert params["q"] == "Retiro Park, Madrid"  # cleaned name + city
+    assert params["accept-language"] == "en" and params["bounded"] == 1
+    assert params["limit"] == POI_MAX_RESULTS
+    left, top, right, bottom = (float(v) for v in params["viewbox"].split(","))
+    assert left < MADRID.lon < right and bottom < MADRID.lat < top
+
+
+def test_search_identifies_the_app_with_a_user_agent():
+    c = place_client(FakeResponse(200, []))
+    c.search_poi("Retiro Park", MADRID)
+    assert c._session.last_headers == {"User-Agent": NOMINATIM_USER_AGENT}
+
+
+def test_bad_place_name_never_reaches_the_network():
+    c = place_client(FakeResponse(200, []))
+    with pytest.raises(InvalidInputError):
+        c.search_poi("   ", MADRID)
+    assert c._session.calls == []
+
+
+@pytest.mark.parametrize("status, exc", [(403, InvalidAPIKeyError), (429, RateLimitError), (503, ServerError)])
+def test_search_errors_name_the_place_search_service(status, exc):
+    with pytest.raises(exc, match="place search service") as info:
+        place_client(FakeResponse(status, {})).search_poi("Retiro Park", MADRID)
+    assert "weather" not in str(info.value)
+
+
+def test_search_network_failure_is_wrapped():
+    with pytest.raises(NetworkError, match="place search service"):
+        place_client(requests.Timeout("t")).search_poi("Retiro Park", MADRID)
+
+
+@pytest.mark.parametrize("answer", [{}, {"error": "oops"}, [{"display_name": "No coordinates"}], ["not a dict"]])
+def test_search_unexpected_answer_is_a_server_error(answer):
+    with pytest.raises(ServerError, match="unexpected answer"):
+        place_client(FakeResponse(200, answer)).search_poi("Retiro Park", MADRID)
+
+
+def test_search_is_limited_to_one_request_per_period():
+    limiter = NominatimClient()._limiter
+    assert (limiter.max_calls, limiter.period) == (1, NOMINATIM_PERIOD_S)

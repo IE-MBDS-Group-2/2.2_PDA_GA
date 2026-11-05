@@ -7,6 +7,7 @@ Another provider (WeatherAPI, Open-Meteo...) could reuse the base class unchange
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 from collections import deque
@@ -16,8 +17,12 @@ from typing import Callable, Iterable
 
 import requests
 
-from .config import API_BASE_URL, MAX_CALLS_PER_MINUTE, REQUEST_TIMEOUT_S
-from .models import Location, WeatherSnapshot
+from .config import (
+    API_BASE_URL, MAX_CALLS_PER_MINUTE, NOMINATIM_BASE_URL, NOMINATIM_PERIOD_S, NOMINATIM_USER_AGENT,
+    POI_MAX_KM_FROM_CITY, POI_MAX_RESULTS, POI_SEARCH_BOX_DEG, REQUEST_TIMEOUT_S,
+)
+from .models import Location, POICandidate, WeatherSnapshot
+from .transform import haversine_km
 
 
 # ---- errors: one class per failure mode so callers (and users) get distinct messages --------
@@ -65,6 +70,31 @@ def validate_city_name(raw: str) -> str:
     bad = sorted({ch for ch in name if not (ch.isalpha() or ch in _ALLOWED_PUNCTUATION)})
     if bad:
         raise InvalidInputError(f"City names cannot contain: {' '.join(bad)}")
+    return name
+
+# Regex for validation
+_WHITESPACE = re.compile(r"\s+")  # any run of spaces, tabs or newlines
+# \w is any letter (in any alphabet), digit or underscore. A character is NOT allowed in a place
+# name if it is not \w, space, or one of  . , ' ’ & ( ) / : -   -- or if it is an underscore.
+_POI_DISALLOWED = re.compile(r"[^\w .,'’&()/:-]|_")
+_LETTER = re.compile(r"[^\W\d_]")  # a word character that is neither a digit nor "_" is a letter
+
+
+def validate_poi_name(raw: str) -> str:
+    """Return a cleaned place name (park, museum...) or raise InvalidInputError.
+
+    Unlike city names, digits are allowed: "Torre 2", "Pier 39".
+    """
+    if raw is None or not str(raw).strip():
+        raise InvalidInputError("Please type the name of the place.")
+    name = _WHITESPACE.sub(" ", str(raw)).strip()
+    if len(name) > 100:
+        raise InvalidInputError("That name is too long (100 characters max).")
+    if not _LETTER.search(name):
+        raise InvalidInputError("A place name needs at least one letter.")
+    bad = sorted(set(_POI_DISALLOWED.findall(name)))
+    if bad:
+        raise InvalidInputError(f"Place names cannot contain: {' '.join(bad)}")
     return name
 
 
@@ -224,6 +254,63 @@ class OpenWeatherClient(JSONAPIClient):
             return slots
         except (KeyError, IndexError, TypeError, ValueError):
             raise ServerError("The weather service sent an unexpected forecast answer.") from None
+
+
+# ---- OpenStreetMap Nominatim (finding a named place) ------------------------------------------
+_SKIP_OSM_CLASSES = frozenset({"highway", "railway"})  # bus stops and stations share names with landmarks
+
+
+def _to_candidates(hits: list, city: Location) -> list[POICandidate]:
+    """Turn raw Nominatim hits into candidates, dropping pub transpo stops and matches far from the city.
+    Kept Nominatim's passed orders hits by relevance
+    """
+    candidates = []
+    for hit in hits:
+        if hit.get("category") in _SKIP_OSM_CLASSES:
+            continue
+        lat, lon = float(hit["lat"]), float(hit["lon"])
+        km = haversine_km(city.lat, city.lon, lat, lon)
+        if km > POI_MAX_KM_FROM_CITY:
+            continue
+        candidates.append(POICandidate(
+            hit["display_name"], round(lat, 4), round(lon, 4),
+            hit.get("category", ""), hit.get("type", ""), round(km, 1),
+        ))
+    return candidates
+
+
+class NominatimClient(JSONAPIClient):
+    """Finds a named place near a city with OpenStreetMap's free search (no API key needed)."""
+
+    service_name = "place search service"
+
+    def __init__(self, **kwargs):
+        # Nominatim's usage policy: at most 1 request per second and an identifying User-Agent.
+        kwargs.setdefault("limiter", RateLimiter(1, NOMINATIM_PERIOD_S))
+        kwargs.setdefault("headers", {"User-Agent": NOMINATIM_USER_AGENT})
+        super().__init__(NOMINATIM_BASE_URL, **kwargs)
+
+    def search_poi(self, name: str, city: Location) -> list[POICandidate]:
+        """Candidate matches for ``name`` within reach of ``city``; an empty list if none fit."""
+        name = validate_poi_name(name)
+        lat, lon = validate_coordinates(city.lat, city.lon)
+        box = POI_SEARCH_BOX_DEG
+        params = {
+            "q": f"{name}, {city.city}",
+            "format": "jsonv2",
+            "limit": POI_MAX_RESULTS,
+            "accept-language": "en",  # English labels instead of the local language
+            "viewbox": f"{lon - box},{lat + box},{lon + box},{lat - box}",  # left, top, right, bottom
+            "bounded": 1,  # 1 = only return results inside the box
+        }
+        hits = self._get("search", params, what="place")
+        unexpected = ServerError("The place search service sent an unexpected answer.")
+        if not isinstance(hits, list):
+            raise unexpected
+        try:
+            return _to_candidates(hits, city)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            raise unexpected from None
 
 
 # ---- batch fetching --------------------------------------------------------------------------
