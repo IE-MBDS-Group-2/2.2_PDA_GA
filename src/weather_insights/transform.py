@@ -361,6 +361,18 @@ def assess_city(attractions: Iterable[Attraction], snapshots: list[WeatherSnapsh
     return [assess_attraction(a, nearest_snapshot(snapshots, a.lat, a.lon), assumptions) for a in attractions]
 
 
+def filter_assessments(assessments: Iterable[Assessment], verdicts: Iterable[str],
+                       settings: Iterable[str]) -> list[Assessment]:
+    """Match both filters, sorted by verdict severity and attraction name.
+
+    An empty selection matches nothing. The original assessments remain unchanged.
+    """
+    verdicts, settings = set(verdicts), set(settings)
+    return sorted((a for a in assessments
+                   if a.verdict.value in verdicts and a.attraction.setting in settings),
+                  key=lambda a: (a.verdict.severity, a.attraction.name))
+
+
 def assessments_to_frame(assessments: Iterable[Assessment]) -> pd.DataFrame:
     rows = [{
         "Attraction": a.attraction.name,

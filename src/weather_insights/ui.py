@@ -329,10 +329,20 @@ def _closeup_tab(cities: list[Location], attractions, assumptions: Assumptions) 
     assessments = pipeline.assess_closeup(city_attractions, batch, assumptions)
     attr_df = transform.assessments_to_frame(assessments)
 
+    st.subheader("Filter attractions")
+    shown = st.multiselect("Show", ["good", "caution", "avoid"], default=["good", "caution", "avoid"],
+                           format_func=lambda k: Verdict(k).label, key="closeup_filter")
+    settings = st.multiselect("Setting", ["indoor", "outdoor", "mixed"],
+                              default=["indoor", "outdoor", "mixed"],
+                              format_func=str.title, key="closeup_setting_filter")
+    st.caption("Filters apply to attraction cards and map pins. Verdict totals cover all attractions in this city.")
+    visible = transform.filter_assessments(assessments, shown, settings)
+    visible_df = transform.assessments_to_frame(visible)
+
     field = (transform.smooth_closeup_field(grid_df, city, grid_size, float(radius), layer)
              if style == "Smooth" else None)
     st.plotly_chart(
-        charts.closeup_map(grid_df, attr_df, (city.lat, city.lon), layer, float(radius), grid_size, field, fit),
+        charts.closeup_map(grid_df, visible_df, (city.lat, city.lon), layer, float(radius), grid_size, field, fit),
         width="stretch",
     )
     _show_errors(batch.errors)
@@ -352,10 +362,8 @@ def _closeup_tab(cities: list[Location], attractions, assumptions: Assumptions) 
                f"wind up to {assumptions.max_wind:.1f} m/s, rain up to {assumptions.max_rain:.1f} mm/h "
                "(change them in the sidebar).")
 
-    shown = st.multiselect("Show", ["good", "caution", "avoid"], default=["good", "caution", "avoid"],
-                           format_func=lambda k: Verdict(k).label, key="closeup_filter")
-    visible = sorted((a for a in assessments if a.verdict.value in shown),
-                     key=lambda a: (a.verdict.severity, a.attraction.name))
+    if not visible:
+        st.info("No attractions match these filters. Select more settings or weather verdicts.")
     card_cols = st.columns(2)
     for i, a in enumerate(visible):
         _attraction_card(a, card_cols[i % 2])

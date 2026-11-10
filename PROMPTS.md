@@ -171,3 +171,16 @@ Proposed placement: a fourth `🏍️ Ride check` tab and a "Rider" sidebar sect
 **Checked:** 208 tests pass, including one for the link format and encoding of special characters (`'`, `&`, `/`, accents). Opened a sample of ~80 of the 260 links in a browser: about 3 in 4 went straight to the right place page. Most of the rest are activity or vague names ("Seine River Cruise", "Desert Safari", "Plaza Mayor") that open a list of results. With coordinates added, a spot check of 6 showed V&A Waterfront fixed (it had been searched in Madrid), working links unchanged, and lists centred on the right spot.
 
 **Kept as-is / changed / rejected:** Changed twice: coordinate-only links (pin only, no place info) → name-only search (wrong matches for some names) → name + coordinates. **Group review:** (a) the `/maps/search/…/@lat,lon` format is widely used but not part of Google's documented Maps URL API, so Google could change its behaviour; (b) ~20 attractions with activity-style names still open a results list; giving them names Google recognises (e.g. "Bateaux Parisiens") would fix that; (c) decide whether Jakarta should stay in `user_cities.csv` or be removed.
+
+
+---
+
+## Feature: filter attractions by setting (issue #12)
+
+**Asked:** Implement indoor, outdoor and mixed setting filters, combined with weather verdicts, on Farah's existing `Farah---D` branch; document the work in commits.
+
+**Got:** Codex added a pure combined-filter helper and setting controls above the close-up map. Cards and map pins use the same filtered assessments, all options start selected, and no matches produces a helpful message. Totals and the forecast selector retain their city-wide scope. The README explains these behaviours. No saved attraction data is changed.
+
+**Checked:** 215 tests pass, including seven new cases covering combined selections, defaults, empty selections, source preservation, synchronized map/card results, restoring selections and cached weather reuse across filter changes. UI checks use Streamlit AppTest and fake weather; no live API key or network calls are needed. `git diff --check` passes.
+
+**Group review:** Review and merge the implementation through a pull request referencing `Closes #12`.
