@@ -161,3 +161,13 @@ def test_simultaneous_saves_of_the_same_attraction_add_it_once(tmp_path):
 def test_missing_files_mean_no_attractions():
     assert load.load_attractions(NO_USER_FILE, NO_USER_FILE) == []
 
+
+
+def test_load_user_attractions_returns_only_the_user_added_ones(tmp_path):
+    curated, user = curated_file(tmp_path), tmp_path / "user.csv"
+    load.save_user_attraction(debod(), user, curated)
+    assert load.load_user_attractions(user) == [debod()]  # Retiro Park (curated) is not in it
+
+
+def test_load_user_attractions_is_empty_without_a_user_file(tmp_path):
+    assert load.load_user_attractions(tmp_path / "missing.csv") == []

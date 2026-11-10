@@ -68,6 +68,10 @@ def load_attractions(path: Path = ATTRACTIONS_CSV, user_csv: Path = USER_ATTRACT
     return list(unique.values())
 
 
+def load_user_attractions(user_csv: Path = USER_ATTRACTIONS_CSV) -> list[Attraction]:
+    """Only the attractions users added through the close-up form (empty if there are none yet)."""
+    return _read_attractions(user_csv)
+
 def save_user_attraction(attraction: Attraction, user_csv: Path = USER_ATTRACTIONS_CSV,
                          curated_csv: Path = ATTRACTIONS_CSV) -> bool:
     """Remember a user-added attraction. Returns False if that city already has one with this name."""
