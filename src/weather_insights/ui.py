@@ -281,6 +281,7 @@ def _attraction_card(a, container) -> None:
         for reason in a.reasons:
             st.markdown(f"- {reason}")
         st.caption(f"{a.snapshot.temp:.0f} °C · wind {a.snapshot.wind_speed:.1f} m/s · {a.snapshot.description}")
+        st.link_button("📍 Open in Google Maps", a.attraction.maps_url)
 
 
 def _closeup_tab(cities: list[Location], attractions, assumptions: Assumptions) -> None:
