@@ -387,6 +387,25 @@ def _band_caption(metric: str, band, assumptions: Assumptions) -> str:
     return f"Green band = your acceptable range ({text}). Change it in the sidebar."
 
 
+def _date_range_slider(history: pd.DataFrame) -> pd.DataFrame:
+    """Analytics tab: a slider to narrow the charts to a range of days; returns the filtered log.
+
+    The slider starts at the whole log, so by default the charts are unchanged. A log that
+    covers a single day has nothing to narrow, so no slider is drawn and the log is returned as-is.
+    """
+    first, last = history["timestamp"].min().date(), history["timestamp"].max().date()
+    if first == last:
+        return history
+    start, end = st.slider("Date range (UTC)", min_value=first, max_value=last, value=(first, last),
+                           step=pd.Timedelta(days=1).to_pytimedelta(), format="YYYY-MM-DD", key="an_dates",
+                           help="Drag either end to focus the charts below on fewer days.")
+    filtered = transform.filter_history_by_date(history, start, end)
+    if (start, end) != (first, last):
+        st.caption(f"Showing {len(filtered)} of {len(history)} observations "
+                   f"({start:%Y-%m-%d} to {end:%Y-%m-%d}).")
+    return filtered
+
+
 def _analytics_tab(history: pd.DataFrame, assumptions: Assumptions) -> None:
     cov = transform.history_coverage(history)
     if not cov["rows"]:
@@ -399,6 +418,11 @@ def _analytics_tab(history: pd.DataFrame, assumptions: Assumptions) -> None:
     c3.metric("History span", f"{(cov['last'] - cov['first']).total_seconds() / 3600:.1f} h")
     st.caption(f"From {cov['first']:%Y-%m-%d %H:%M} to {cov['last']:%Y-%m-%d %H:%M} UTC. "
                "Run `main.py --refresh` on a schedule to keep growing it.")
+
+    history = _date_range_slider(history)
+    if history.empty:
+        st.info("No observations were logged on the selected days. Widen the date range.")
+        return
 
     resolution = st.radio("Time resolution", ["Every observation", "Hourly average", "Daily average"],
                           horizontal=True, key="an_res")
