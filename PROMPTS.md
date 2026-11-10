@@ -154,3 +154,20 @@ Proposed placement: a fourth `🏍️ Ride check` tab and a "Rider" sidebar sect
 **Checked:** Read `models.py`, `extract.py`, `config.py`, `main.py`, the README and the module outlines. Found one prerequisite: `WeatherSnapshot` stores `wind_speed` but not wind direction (`wind.deg`) or gusts (`wind.gust`), which OpenWeatherMap already returns; crosswind needs both. Adding them changes `LOG_COLUMNS`, so `load.py` must tolerate older log rows without those columns.
 
 **Kept as-is / changed / rejected:** Not built yet. **Group review:** decide which features to build (1-6 fit one PR; 7 reuses existing code; 8 and 9 are separate add-ons), and agree on the rider thresholds (wind-chill bands, crosswind / gust limits, ice temperature) before they are coded.
+
+---
+
+## Feature: Google Maps link on every attraction card
+
+*Branch `feat/add-maps`. Agent for this entry: Claude (Claude Code session, model `claude-opus-5-5`).*
+
+**Asked:** Add a Google Maps link to the points of interest. Along the way: add the missing cities that made the catalogue tests fail, check the coordinates against a real source (not the model's memory), and have the link open the place's own Google Maps page (reviews, hours, photos) rather than a bare pin.
+
+**Got:**
+- `Attraction.maps_url` in `models.py` and a "📍 Open in Google Maps" button on each verdict card in `ui.py`. The link searches for "name, city" centred on the attraction's coordinates (`/maps/search/<name, city>/@lat,lon,17z`). The name opens the place page, and the coordinates make Google pick the match at that spot.
+- `data/cities.csv`: added Washington D.C. and Abu Dhabi, which already had attractions but no city row (26 cities, matching the README). Both city-centre coordinates were taken from OpenStreetMap Nominatim.
+- `tests/test_load.py`: the catalogue tests now load only the curated `cities.csv` (`shipped_cities()`), so cities users add in the app (e.g. the committed "Special capital Region of Jakarta" in `user_cities.csv`) cannot break them. Claude first added 10 Jakarta attractions to make the test pass; we rejected that because Jakarta was a user-added city, and fixed the test instead.
+
+**Checked:** 208 tests pass, including one for the link format and encoding of special characters (`'`, `&`, `/`, accents). Opened a sample of ~80 of the 260 links in a browser: about 3 in 4 went straight to the right place page. Most of the rest are activity or vague names ("Seine River Cruise", "Desert Safari", "Plaza Mayor") that open a list of results. With coordinates added, a spot check of 6 showed V&A Waterfront fixed (it had been searched in Madrid), working links unchanged, and lists centred on the right spot.
+
+**Kept as-is / changed / rejected:** Changed twice: coordinate-only links (pin only, no place info) → name-only search (wrong matches for some names) → name + coordinates. **Group review:** (a) the `/maps/search/…/@lat,lon` format is widely used but not part of Google's documented Maps URL API, so Google could change its behaviour; (b) ~20 attractions with activity-style names still open a results list; giving them names Google recognises (e.g. "Bateaux Parisiens") would fix that; (c) decide whether Jakarta should stay in `user_cities.csv` or be removed.

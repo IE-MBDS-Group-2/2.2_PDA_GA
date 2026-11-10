@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+from urllib.parse import quote_plus
 
 import numpy as np
 
@@ -281,6 +282,16 @@ class Attraction:
     wind_sensitive: bool  # cable cars, boats, towers... usually suspend operation in high wind
     lat: float
     lon: float
+
+    @property
+    def maps_url(self) -> str:
+        """Google Maps search for "<name>, <city>" centred on this attraction's coordinates.
+
+        The name opens the place's own page (reviews, hours, photos); the coordinates make Google
+        prefer the match at this spot, and if the name is vague it lists results around the pin.
+        """
+        query = quote_plus(f"{self.name}, {self.city}")
+        return f"https://www.google.com/maps/search/{query}/@{self.lat:.6f},{self.lon:.6f},17z"
 
     def __str__(self) -> str:
         return f"{self.name} ({self.category}, {self.setting})"

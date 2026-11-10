@@ -64,6 +64,15 @@ def test_verdict_labels_and_attraction_str():
     assert "outdoor" in str(Attraction("Madrid", "Retiro", "Park", "outdoor", False, 0, 0))
 
 
+def test_attraction_maps_url_searches_for_its_name_and_city_at_its_coordinates():
+    retiro = Attraction("Madrid", "Retiro Park", "Park", "outdoor", False, 40.4153, -3.6844)
+    assert retiro.maps_url == ("https://www.google.com/maps/search/Retiro+Park%2C+Madrid"
+                               "/@40.415300,-3.684400,17z")
+    # names with special characters (including "/") are encoded, so they cannot break the link
+    odd = Attraction("New York", "9/11 Musée d'Orsay & Café", "Museum", "indoor", False, 40.71, -74.01)
+    assert "/search/9%2F11+Mus%C3%A9e+d%27Orsay+%26+Caf%C3%A9%2C+New+York/@" in odd.maps_url
+
+
 # tests for the new POI candidate class and its methods
 def candidate(osm_type="museum", km=1.4):
     return POICandidate("Templo de Debod, Madrid", 40.4241, -3.7176, "tourism", osm_type, km)

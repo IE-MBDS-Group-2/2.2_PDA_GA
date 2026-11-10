@@ -51,8 +51,13 @@ def shipped_attractions():
     return load.load_attractions(user_csv=NO_USER_FILE)
 
 
+def shipped_cities():
+    """Only the curated file: cities a user adds in the app must not affect these checks."""
+    return load.load_cities(user_csv=NO_USER_FILE)
+
+
 def test_shipped_catalogues_are_consistent():
-    cities = {c.city: c for c in load.load_cities()}
+    cities = {c.city: c for c in shipped_cities()}
     attractions = shipped_attractions()
     assert {a.city for a in attractions} <= set(cities)
     assert {a.setting for a in attractions} <= {"outdoor", "indoor", "mixed"}
@@ -62,7 +67,7 @@ def test_shipped_catalogues_are_consistent():
 
 
 def test_default_capitals_present_and_every_city_has_up_to_ten_attractions():
-    cities = {c.city: c for c in load.load_cities()}
+    cities = {c.city: c for c in shipped_cities()}
     capitals = {"Beirut": "LB", "Washington D.C.": "US", "Quito": "EC", "Abu Dhabi": "AE",
                 "Warsaw": "PL", "Manila": "PH", "Madrid": "ES"}
     for name, country in capitals.items():
@@ -76,7 +81,7 @@ def test_default_capitals_present_and_every_city_has_up_to_ten_attractions():
 
 def test_each_attraction_is_near_its_city():
     from weather_insights.transform import haversine_km
-    cities = {c.city: c for c in load.load_cities()}
+    cities = {c.city: c for c in shipped_cities()}
     far = [(a.name, round(haversine_km(a.lat, a.lon, cities[a.city].lat, cities[a.city].lon)))
            for a in shipped_attractions()
            if haversine_km(a.lat, a.lon, cities[a.city].lat, cities[a.city].lon) > 45]
