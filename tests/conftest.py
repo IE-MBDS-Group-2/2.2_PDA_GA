@@ -42,9 +42,12 @@ class FakeSession:
     def __init__(self, *responses):
         self.responses = list(responses)
         self.calls = []
+        self.last_headers = None
 
-    def get(self, url, params=None, timeout=None):
+    def get(self, url, params=None, timeout=None, headers=None):
         self.calls.append((url, dict(params or {})))
+        # Records which headers were sent, so tests can assert that e.g. a User-Agent was included.
+        self.last_headers = headers
         item = self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
         if isinstance(item, Exception):
             raise item

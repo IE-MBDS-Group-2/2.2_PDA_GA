@@ -285,6 +285,26 @@ class Attraction:
     def __str__(self) -> str:
         return f"{self.name} ({self.category}, {self.setting})"
 
+# a clone of the Attraction class, but with a few extra fields for the user-added attractions
+@dataclass(frozen=True)
+class POICandidate:
+    """One possible match for a place a user typed in, before they confirm it."""
+
+    label: str  # full address-style name from the geocoder
+    lat: float
+    lon: float
+    osm_class: str  # OpenStreetMap feature class, e.g. "tourism"
+    osm_type: str  # OpenStreetMap feature type, e.g. "museum"
+    km_from_city: float
+
+    @property
+    def suggested_category(self) -> str:
+        """A starting point for the Attraction category; the user can change it."""
+        return self.osm_type.replace("_", " ").title() if self.osm_type else "Other"
+
+    def __str__(self) -> str:
+        return f"{self.label} ({self.km_from_city:g} km from the city centre)"
+
 
 @dataclass(frozen=True)
 class Assessment:

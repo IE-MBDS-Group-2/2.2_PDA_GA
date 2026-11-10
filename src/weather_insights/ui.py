@@ -14,6 +14,7 @@ from . import charts, load, pipeline, transform
 from .config import CACHE_TTL_S, LOG_CSV, MissingAPIKeyError
 from .extract import (
     APIError, InvalidAPIKeyError, InvalidInputError, LocationNotFoundError, NetworkError, RateLimitError,
+    parse_coordinates,
 )
 from .models import Assumptions, Location, Verdict
 
@@ -31,6 +32,12 @@ DEFAULTS = Assumptions()
 @st.cache_resource
 def _client():
     return pipeline.build_client()
+
+
+@st.cache_resource
+def _place_client():
+    # One shared client: it holds the 1-request-per-second limiter that OpenStreetMap's policy requires.
+    return pipeline.build_place_client()
 
 
 def _as_key(loc: Location) -> tuple:
@@ -78,6 +85,100 @@ def _add_city(query: str) -> None:
         else:
             st.session_state["flash"] = ("info", f"{location} is already tracked.")
     st.rerun()
+
+
+def _search_poi(name: str, city: Location) -> None:
+    """Form action: look a typed place up and keep the matches, so the confirm step survives the rerun."""
+    st.session_state.pop("poi_search", None)  # a new search starts clean: never leave the old matches (and Save) up
+    try:
+        matches = pipeline.find_poi(_place_client(), name, city)
+    except InvalidInputError as exc:
+        st.session_state["poi_flash"] = ("warning", str(exc))
+    except APIError as exc:  # network down, rate limited, service blocked...
+        st.session_state["poi_flash"] = ("error", str(exc))
+    else:
+        search_id = st.session_state.get("poi_search_id", 0) + 1  # new widget keys for every search
+        st.session_state["poi_search_id"] = search_id
+        st.session_state["poi_search"] = {"id": search_id, "city": city.city, "name": name.strip(), "matches": matches}
+        if not matches:
+            st.session_state["poi_flash"] = ("info", f"No match for '{name.strip()}' near {city.city}. "
+                                                     "You can enter its coordinates yourself below.")
+    st.rerun()
+
+
+def _save_poi(city: Location, name: str, category: str, setting: str, wind_sensitive: bool,
+              match, coordinates: str) -> None:
+    """Form action: save the confirmed (or hand-located) place, with a distinct message per outcome."""
+    try:
+        lat, lon = (match.lat, match.lon) if match else parse_coordinates(coordinates)
+        attraction, is_new = pipeline.add_attraction(city, name, category, setting, wind_sensitive, lat, lon)
+    except InvalidInputError as exc:
+        st.session_state["poi_flash"] = ("warning", str(exc))
+    except OSError:
+        st.session_state["poi_flash"] = ("error", "Could not write to the attractions file. Check the data folder.")
+    else:
+        if is_new:
+            st.session_state["poi_flash"] = ("success", f"Added {attraction.name} to {city.city}. "
+                                                        "Its verdict now appears in the list.")
+            st.session_state.pop("poi_search", None)
+        else:
+            st.session_state["poi_flash"] = ("info", f"{city.city} already has an attraction called {attraction.name}.")
+    st.rerun()
+
+
+def _poi_confirm_form(city: Location, search: dict) -> None:
+    """Step 2: pick the right match (or give coordinates), describe the place, save."""
+    matches, sid = search["matches"], search["id"]
+    match = None
+    if matches:
+        options = [*matches, None]
+        match = st.radio("Which place do you mean?", options, key=f"poi_choice_{sid}",
+                         format_func=lambda m: "None of these: I will enter coordinates myself" if m is None else str(m))
+
+    # The widget keys include the chosen match, so picking another match refreshes the suggestions.
+    choice_id = matches.index(match) if match else -1
+    with st.form(f"poi_save_{sid}"):
+        name = st.text_input("Name shown in the app", value=search["name"], max_chars=100, key=f"poi_name_{sid}")
+        c1, c2, c3 = st.columns([2, 2, 1])
+        category = c1.text_input("Category", value=match.suggested_category if match else "Other",
+                                 max_chars=pipeline.MAX_CATEGORY_LEN,
+                                 key=f"poi_category_{sid}_{choice_id}",
+                                 help="A short label such as Museum or Park (suggested from OpenStreetMap; change it freely).")
+        setting = c2.selectbox("Setting", pipeline.SETTINGS, key=f"poi_setting_{sid}",
+                               help="Outdoor: rain, wind and temperature decide the verdict. Indoor: weather-proof. "
+                                    "Mixed: indoor parts stay available, so only severe weather is a problem.")
+        wind_sensitive = c3.checkbox("Wind sensitive", key=f"poi_wind_{sid}",
+                                     help="Cable cars, boats, observation decks... usually close in high wind.")
+        coordinates = ""
+        if match is None:
+            coordinates = st.text_input(
+                "Latitude, longitude", placeholder="40.4241, -3.7176", key=f"poi_coords_{sid}",
+                help="In Google Maps, right-click the place and click the two numbers at the top of the menu "
+                     "to copy them, then paste here.")
+        if st.form_submit_button("Save attraction"):
+            _save_poi(city, name, category, setting, wind_sensitive, match, coordinates)
+
+
+def _add_attraction_panel(city: Location) -> None:
+    """Close-up tab: add a place that is missing from the curated list, found by name."""
+    search = st.session_state.get("poi_search")
+    if search and search["city"] != city.city:  # the user moved to another city: the matches no longer apply
+        st.session_state.pop("poi_search")
+        search = None
+    # Messages appear here, next to the form, not at the top of the page where they could be scrolled away.
+    message = st.session_state.pop("poi_flash", None)
+    with st.expander("➕ Add an attraction that is missing", expanded=search is not None or message is not None):
+        if message:
+            getattr(st, message[0])(message[1])
+        st.caption(f"Type the name of a place in {city.city}. We look up its position on OpenStreetMap; "
+                   "you confirm the match and say whether it is outdoors, indoors or both.")
+        with st.form("poi_search_form"):
+            name = st.text_input("Name of the place", placeholder="e.g. Templo de Debod", max_chars=100)
+            if st.form_submit_button("Search"):
+                _search_poi(name, city)
+        if search:
+            _poi_confirm_form(city, search)
+        st.caption("Place data © OpenStreetMap contributors.")
 
 
 def _reset_assumptions() -> None:
@@ -236,8 +337,9 @@ def _closeup_tab(cities: list[Location], attractions, assumptions: Assumptions) 
     _show_errors(batch.errors)
 
     st.subheader(f"What can you visit in {city.city} right now?")
+    _add_attraction_panel(city)
     if not assessments:
-        st.info(f"No attractions are curated for {city.city} yet. Add rows to data/attractions.csv.")
+        st.info(f"No attractions are listed for {city.city} yet. Add one with the form above.")
         return
 
     counts = attr_df["verdict_key"].value_counts()
@@ -349,9 +451,12 @@ def render() -> None:
         st.error(str(exc))
         st.stop()
 
+    # A fixed slot: it is always one element, so showing a message never shifts the tab bar below it.
+    # (If the tab bar moves, Streamlit resets it to the first tab and the user is thrown back.)
+    flash_slot = st.empty()
     flash = st.session_state.pop("flash", None)
     if flash:
-        getattr(st, flash[0])(flash[1])
+        getattr(flash_slot, flash[0])(flash[1])
 
     cities = load.load_cities()
     attractions = load.load_attractions()

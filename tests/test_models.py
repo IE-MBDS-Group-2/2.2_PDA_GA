@@ -1,7 +1,9 @@
 import pytest
 
 from conftest import MADRID, owm_payload
-from weather_insights.models import Attraction, Verdict, WeatherSnapshot, comfort_score, condition_group
+from weather_insights.models import (
+    Attraction, POICandidate, Verdict, WeatherSnapshot, comfort_score, condition_group,
+)
 
 
 def snap(**kw):
@@ -60,3 +62,19 @@ def test_condition_groups(cid, group):
 def test_verdict_labels_and_attraction_str():
     assert Verdict.AVOID.severity > Verdict.CAUTION.severity > Verdict.GOOD.severity
     assert "outdoor" in str(Attraction("Madrid", "Retiro", "Park", "outdoor", False, 0, 0))
+
+
+# tests for the new POI candidate class and its methods
+def candidate(osm_type="museum", km=1.4):
+    return POICandidate("Templo de Debod, Madrid", 40.4241, -3.7176, "tourism", osm_type, km)
+
+
+def test_poi_candidate_suggests_a_readable_category():
+    assert candidate("museum").suggested_category == "Museum"
+    assert candidate("theme_park").suggested_category == "Theme Park"
+    assert candidate("").suggested_category == "Other"
+
+
+def test_poi_candidate_str_shows_distance_from_centre():
+    assert str(candidate(km=1.4)) == "Templo de Debod, Madrid (1.4 km from the city centre)"
+    assert "2 km" in str(candidate(km=2.0))

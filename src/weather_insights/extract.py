@@ -7,8 +7,10 @@ Another provider (WeatherAPI, Open-Meteo...) could reuse the base class unchange
 
 from __future__ import annotations
 
+import re
 import threading
 import time
+import unicodedata
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -16,8 +18,12 @@ from typing import Callable, Iterable
 
 import requests
 
-from .config import API_BASE_URL, MAX_CALLS_PER_MINUTE, REQUEST_TIMEOUT_S
-from .models import Location, WeatherSnapshot
+from .config import (
+    API_BASE_URL, MAX_CALLS_PER_MINUTE, NOMINATIM_BASE_URL, NOMINATIM_PERIOD_S, NOMINATIM_USER_AGENT,
+    POI_MAX_KM_FROM_CITY, POI_MAX_RESULTS, POI_SEARCH_BOX_DEG, REQUEST_TIMEOUT_S,
+)
+from .models import Location, POICandidate, WeatherSnapshot
+from .transform import haversine_km
 
 
 # ---- errors: one class per failure mode so callers (and users) get distinct messages --------
@@ -67,6 +73,34 @@ def validate_city_name(raw: str) -> str:
         raise InvalidInputError(f"City names cannot contain: {' '.join(bad)}")
     return name
 
+# Regex for validation
+_WHITESPACE = re.compile(r"\s+")  # any run of spaces, tabs or newlines
+# \w is any letter (in any alphabet), digit or underscore. A character is NOT allowed in a place
+# name if it is not \w, space, or one of  . , ' ’ & ( ) / : -   -- or if it is an underscore.
+_POI_DISALLOWED = re.compile(r"[^\w .,'’&()/:-]|_")
+_LETTER = re.compile(r"[^\W\d_]")  # a word character that is neither a digit nor "_" is a letter
+
+
+def validate_poi_name(raw: str) -> str:
+    """Return a cleaned place name (park, museum...) or raise InvalidInputError.
+
+    Unlike city names, digits are allowed: "Torre 2", "Pier 39".
+    """
+    if raw is None or not str(raw).strip():
+        raise InvalidInputError("Please type the name of the place.")
+    # NFC joins "e" + a separate accent into one "é", so pasted text compares equal to typed text.
+    name = unicodedata.normalize("NFC", _WHITESPACE.sub(" ", str(raw)).strip())
+    if len(name) > 100:
+        raise InvalidInputError("That name is too long (100 characters max).")
+    # Accents and vowel signs (Hindi, Thai...) are "marks"; \w does not match them, so check without.
+    base = "".join(ch for ch in name if not unicodedata.category(ch).startswith("M"))
+    if not _LETTER.search(base):
+        raise InvalidInputError("A place name needs at least one letter.")
+    bad = sorted(set(_POI_DISALLOWED.findall(base)))
+    if bad:
+        raise InvalidInputError(f"Place names cannot contain: {' '.join(bad)}")
+    return name
+
 
 def validate_coordinates(lat: float, lon: float) -> tuple[float, float]:
     try:
@@ -76,6 +110,31 @@ def validate_coordinates(lat: float, lon: float) -> tuple[float, float]:
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
         raise InvalidInputError("Coordinates are out of range (lat -90..90, lon -180..180).")
     return lat, lon
+
+
+# Two signed decimals split by a comma, semicolon or whitespace: "40.4241, -3.7176" or "40.4241 -3.7176".
+# The separator is required so that "1234" is never read as "123" and "4".
+_LAT_LON = re.compile(r"^\s*(-?\d+(?:\.\d+)?)(?:\s*[,;]\s*|\s+)(-?\d+(?:\.\d+)?)\s*$")
+
+
+def parse_coordinates(raw: str) -> tuple[float, float]:
+    """Read a 'latitude, longitude' pair as copied from a map app. Raises InvalidInputError."""
+    match = _LAT_LON.match(str(raw or ""))
+    if not match:
+        raise InvalidInputError('Type the coordinates as "latitude, longitude", for example 40.4241, -3.7176.')
+    return float(match[1]), float(match[2])
+
+
+def validate_poi_coordinates(city: Location, lat: float, lon: float) -> tuple[float, float]:
+    """Hand-typed coordinates (e.g. copied from Google Maps) must be real and close to the city."""
+    lat, lon = validate_coordinates(lat, lon)
+    km = haversine_km(city.lat, city.lon, lat, lon)
+    if km > POI_MAX_KM_FROM_CITY:
+        raise InvalidInputError(
+            f"That point is {km:.0f} km from {city.city}. Places must be within "
+            f"{POI_MAX_KM_FROM_CITY} km of the city centre."
+        )
+    return round(lat, 4), round(lon, 4)
 
 
 # ---- rate limiting -----------------------------------------------------------------------------------
@@ -112,11 +171,14 @@ class RateLimiter:
 class JSONAPIClient:
     """Reusable GET-JSON client with provider-independent error handling."""
 
+    service_name = "service"  # how error messages refer to the provider; subclasses override
+
     def __init__(self, base_url: str, auth_params: dict | None = None,
                  timeout: float = REQUEST_TIMEOUT_S, session: requests.Session | None = None,
-                 limiter: RateLimiter | None = None):
+                 limiter: RateLimiter | None = None, headers: dict | None = None):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self._headers = dict(headers or {})  # sent with every request (e.g. a User-Agent)
         self._limiter = limiter  # optional: provider-specific request budget, shared by all calls
         # Name-mangled on purpose: credentials must not be reachable by accident (vars(), repr,
         # subclass code, debugging dumps). Only _get() below adds them to outgoing requests.
@@ -132,42 +194,53 @@ class JSONAPIClient:
         query = {**(params or {}), **self.__auth_params}
         if self._limiter is not None:
             self._limiter.acquire()
+        extra = {"headers": self._headers} if self._headers else {}  # only when configured
         try:
-            response = self._session.get(url, params=query, timeout=self.timeout)
+            response = self._session.get(url, params=query, timeout=self.timeout, **extra)
         except requests.Timeout:
-            raise NetworkError("The weather service took too long to answer. Try again.") from None
+            raise NetworkError(f"The {self.service_name} took too long to answer. Try again.") from None
         except requests.ConnectionError:
-            raise NetworkError("Could not reach the weather service. Check your internet connection.") from None
+            raise NetworkError(f"Could not reach the {self.service_name}. Check your internet connection.") from None
         except requests.RequestException as exc:
             # `from None` + no str(exc): the exception text contains the full URL (with the key).
-            raise NetworkError(f"Network problem while contacting the weather service ({type(exc).__name__}).") from None
+            raise NetworkError(
+                f"Network problem while contacting the {self.service_name} ({type(exc).__name__})."
+            ) from None
         self._check_status(response, what)
         try:
             return response.json()
         except ValueError:
-            raise ServerError("The weather service sent a response we could not read.") from None
+            raise ServerError(f"The {self.service_name} sent a response we could not read.") from None
+
+    def _rejected_message(self, status: int) -> str:
+        """Text for HTTP 401/403. Subclasses with an API key give a more helpful hint."""
+        return f"The {self.service_name} refused the request (HTTP {status})."
 
     def _check_status(self, response, what: str) -> None:
         status = response.status_code
         if status == 200:
             return
         if status in (401, 403):
-            raise InvalidAPIKeyError(
-                "The weather service rejected the API key. Check OPENWEATHER_API_KEY in "
-                ".env (new keys can take up to two hours to activate)."
-            )
+            # hook for 401/403 text: subclasses with an API key give a better hint
+            raise InvalidAPIKeyError(self._rejected_message(status))
         if status == 404:
-            raise LocationNotFoundError(f"The weather service could not find that {what}.")
+            raise LocationNotFoundError(f"The {self.service_name} could not find that {what}.")
         if status == 429:
-            raise RateLimitError("Too many requests for the free API plan. Wait a minute and retry.")
+            raise RateLimitError(f"Too many requests to the {self.service_name}. Wait a minute and retry.")
         if status >= 500:
-            raise ServerError(f"The weather service is having problems (HTTP {status}). Try again later.")
-        raise APIError(f"Unexpected answer from the weather service (HTTP {status}).")
+            raise ServerError(f"The {self.service_name} is having problems (HTTP {status}). Try again later.")
+        raise APIError(f"Unexpected answer from the {self.service_name} (HTTP {status}).")
 
 
 # ---- OpenWeatherMap --------------------------------------------------------------------------
 class OpenWeatherClient(JSONAPIClient):
     """Knows the OpenWeatherMap endpoints and how to turn them into domain objects."""
+
+    service_name = "weather service"
+
+    def _rejected_message(self, status: int) -> str:
+        return ("The weather service rejected the API key. Check OPENWEATHER_API_KEY in "
+                ".env (new keys can take up to two hours to activate).")
 
     def __init__(self, api_key: str, **kwargs):
         if not api_key or not str(api_key).strip():
@@ -210,6 +283,67 @@ class OpenWeatherClient(JSONAPIClient):
             return slots
         except (KeyError, IndexError, TypeError, ValueError):
             raise ServerError("The weather service sent an unexpected forecast answer.") from None
+
+
+# ---- OpenStreetMap Nominatim (finding a named place) ------------------------------------------
+# Matches that are not visitable places. Whole classes: city/district outlines (what Nominatim falls back
+# to when the name is unknown) and train/transit stops. Not all of "highway": it also holds pedestrian
+# squares and footpaths such as Puerta del Sol, so only its bus stops are skipped.
+_SKIP_OSM_CLASSES = frozenset({"boundary", "railway", "public_transport"})
+_SKIP_OSM_TYPES = frozenset({"bus_stop"})
+
+
+def _to_candidates(hits: list, city: Location) -> list[POICandidate]:
+    """Turn raw Nominatim hits into candidates, dropping pub transpo stops and matches far from the city.
+    Kept Nominatim's passed orders hits by relevance
+    """
+    candidates = []
+    for hit in hits:
+        if hit.get("category") in _SKIP_OSM_CLASSES or hit.get("type") in _SKIP_OSM_TYPES:
+            continue
+        lat, lon = float(hit["lat"]), float(hit["lon"])
+        km = haversine_km(city.lat, city.lon, lat, lon)
+        if km > POI_MAX_KM_FROM_CITY:
+            continue
+        candidates.append(POICandidate(
+            hit["display_name"], round(lat, 4), round(lon, 4),
+            hit.get("category", ""), hit.get("type", ""), round(km, 1),
+        ))
+    return candidates
+
+
+class NominatimClient(JSONAPIClient):
+    """Finds a named place near a city with OpenStreetMap's free search (no API key needed)."""
+
+    service_name = "place search service"
+
+    def __init__(self, **kwargs):
+        # Nominatim's usage policy: at most 1 request per second and an identifying User-Agent.
+        kwargs.setdefault("limiter", RateLimiter(1, NOMINATIM_PERIOD_S))
+        kwargs.setdefault("headers", {"User-Agent": NOMINATIM_USER_AGENT})
+        super().__init__(NOMINATIM_BASE_URL, **kwargs)
+
+    def search_poi(self, name: str, city: Location) -> list[POICandidate]:
+        """Candidate matches for ``name`` within reach of ``city``; an empty list if none fit."""
+        name = validate_poi_name(name)
+        lat, lon = validate_coordinates(city.lat, city.lon)
+        box = POI_SEARCH_BOX_DEG
+        params = {
+            "q": f"{name}, {city.city}",
+            "format": "jsonv2",
+            "limit": POI_MAX_RESULTS,
+            "accept-language": "en",  # English labels instead of the local language
+            "viewbox": f"{lon - box},{lat + box},{lon + box},{lat - box}",  # left, top, right, bottom
+            "bounded": 1,  # 1 = only return results inside the box
+        }
+        hits = self._get("search", params, what="place")
+        unexpected = ServerError("The place search service sent an unexpected answer.")
+        if not isinstance(hits, list):
+            raise unexpected
+        try:
+            return _to_candidates(hits, city)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            raise unexpected from None
 
 
 # ---- batch fetching --------------------------------------------------------------------------
