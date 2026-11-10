@@ -74,3 +74,38 @@ def test_single_day_log_draws_no_slider():
     at = run_slider(days=(0, 0))
     assert not at.exception
     assert len(at.slider) == 0 and at.text[0].value == "rows=2"
+
+
+def two_sliders_app():
+    """Two sliders on the same log, as in two metric tabs of the Analytics page."""
+    from test_date_range import history
+    from weather_insights import ui
+
+    ui._date_range_slider(history(), key="an_dates_temp")
+    ui._date_range_slider(history(), key="an_dates_humidity")
+
+
+def test_sliders_in_different_tabs_stay_in_sync():
+    at = AppTest.from_function(two_sliders_app).run()
+    picked = (date(2025, 10, 10), date(2025, 10, 12))
+    at.slider(key="an_dates_temp").set_value(picked).run()
+    assert not at.exception
+    assert at.slider(key="an_dates_humidity").value == picked
+
+
+def analytics_app():
+    from test_date_range import history
+    from weather_insights import ui
+    from weather_insights.models import Assumptions
+
+    ui._analytics_tab(history(), Assumptions())
+
+
+def test_analytics_tab_puts_a_slider_under_each_time_series_chart():
+    at = AppTest.from_function(analytics_app).run()
+    assert not at.exception
+    from weather_insights.ui import ANALYTICS_METRICS
+    assert len(at.slider) == len(ANALYTICS_METRICS)  # one per metric tab
+    left_column = at.tabs[0].columns[0]
+    kinds = [el.type for el in left_column.children.values()]
+    assert kinds.index("plotly_chart") < kinds.index("slider")  # chart first, slider underneath

@@ -387,22 +387,35 @@ def _band_caption(metric: str, band, assumptions: Assumptions) -> str:
     return f"Green band = your acceptable range ({text}). Change it in the sidebar."
 
 
-def _date_range_slider(history: pd.DataFrame) -> pd.DataFrame:
+DATE_RANGE_STATE = "an_dates_shared"  # the range last picked on any slider, so all of them agree
+
+
+def _remember_date_range(key: str) -> None:
+    st.session_state[DATE_RANGE_STATE] = st.session_state[key]
+
+
+def _date_range_slider(history: pd.DataFrame, container=st, key: str = "an_dates") -> pd.DataFrame:
     """Analytics tab: a slider to narrow the charts to a range of days; returns the filtered log.
 
-    The slider starts at the whole log, so by default the charts are unchanged. A log that
-    covers a single day has nothing to narrow, so no slider is drawn and the log is returned as-is.
+    Drawn in ``container`` (e.g. a column under a chart). Several sliders with different keys stay
+    in sync: moving one moves the others on the next run. The slider starts at the whole log, so by
+    default the charts are unchanged. A log that covers a single day has nothing to narrow, so no
+    slider is drawn and the log is returned as-is.
     """
     first, last = history["timestamp"].min().date(), history["timestamp"].max().date()
     if first == last:
         return history
-    start, end = st.slider("Date range (UTC)", min_value=first, max_value=last, value=(first, last),
-                           step=pd.Timedelta(days=1).to_pytimedelta(), format="YYYY-MM-DD", key="an_dates",
-                           help="Drag either end to focus the charts below on fewer days.")
+    start, end = st.session_state.get(DATE_RANGE_STATE, (first, last))
+    start, end = max(start, first), min(end, last)  # the log may have grown or shrunk since
+    st.session_state[key] = (start, end) if start <= end else (first, last)
+    start, end = container.slider("Date range (UTC)", min_value=first, max_value=last,
+                                  step=pd.Timedelta(days=1).to_pytimedelta(), format="YYYY-MM-DD", key=key,
+                                  on_change=_remember_date_range, args=(key,),
+                                  help="Drag either end to focus the charts on fewer days.")
     filtered = transform.filter_history_by_date(history, start, end)
     if (start, end) != (first, last):
-        st.caption(f"Showing {len(filtered)} of {len(history)} observations "
-                   f"({start:%Y-%m-%d} to {end:%Y-%m-%d}).")
+        container.caption(f"Showing {len(filtered)} of {len(history)} observations "
+                          f"({start:%Y-%m-%d} to {end:%Y-%m-%d}).")
     return filtered
 
 
@@ -418,11 +431,6 @@ def _analytics_tab(history: pd.DataFrame, assumptions: Assumptions) -> None:
     c3.metric("History span", f"{(cov['last'] - cov['first']).total_seconds() / 3600:.1f} h")
     st.caption(f"From {cov['first']:%Y-%m-%d %H:%M} to {cov['last']:%Y-%m-%d %H:%M} UTC. "
                "Run `main.py --refresh` on a schedule to keep growing it.")
-
-    history = _date_range_slider(history)
-    if history.empty:
-        st.info("No observations were logged on the selected days. Widen the date range.")
-        return
 
     resolution = st.radio("Time resolution", ["Every observation", "Hourly average", "Daily average"],
                           horizontal=True, key="an_res")
@@ -441,20 +449,26 @@ def _analytics_tab(history: pd.DataFrame, assumptions: Assumptions) -> None:
         with tab:
             label = transform.METRICS[metric]
             band = assumptions.acceptable_range(metric)
+            st.caption(_band_caption(metric, band, assumptions))
+            left, right = st.columns([3, 2])
+            left.markdown(f"**{label} over time, all cities**")
+            # The chart slot comes first so it sits above the slider, but is filled after the slider is read.
+            chart_slot = left.empty()
+            shown = _date_range_slider(history, left, key=f"an_dates_{metric}")
+            if shown.empty:
+                chart_slot.info("No observations were logged on the selected days. Widen the date range.")
+                continue
             if metric == "temp_range":
-                daily = transform.daily_summary(history)
+                daily = transform.daily_summary(shown)
                 series = daily.rename(columns={"date": "timestamp", "temp_range": "value"})[["city", "timestamp", "value"]]
                 series["timestamp"] = pd.to_datetime(series["timestamp"])
                 bars = daily.groupby("city", as_index=False)["temp_range"].mean().rename(columns={"temp_range": "value"})
                 bar_title = "Average daily range"
             else:
-                series = transform.metric_timeseries(history, metric, freq)
-                bars = transform.latest_per_city(history)[["city", metric]].rename(columns={metric: "value"})
+                series = transform.metric_timeseries(shown, metric, freq)
+                bars = transform.latest_per_city(shown)[["city", metric]].rename(columns={metric: "value"})
                 bar_title = "Latest observation"
-            st.caption(_band_caption(metric, band, assumptions))
-            left, right = st.columns([3, 2])
-            left.markdown(f"**{label} over time, all cities**")
-            left.plotly_chart(charts.metric_timeseries_chart(series, label, band), width="stretch")
+            chart_slot.plotly_chart(charts.metric_timeseries_chart(series, label, band), width="stretch")
             right.markdown(f"**{bar_title}, all cities**")
             right.plotly_chart(charts.metric_bar_chart(bars, label, band), width="stretch")
             if series.groupby("city").size().max() < 2:
