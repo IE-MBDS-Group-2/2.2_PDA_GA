@@ -171,3 +171,84 @@ def test_load_user_attractions_returns_only_the_user_added_ones(tmp_path):
 
 def test_load_user_attractions_is_empty_without_a_user_file(tmp_path):
     assert load.load_user_attractions(tmp_path / "missing.csv") == []
+
+
+# ---- deleting user-added attractions ----
+def test_delete_removes_only_that_attraction_and_keeps_the_others_intact(tmp_path):
+    curated, user = curated_file(tmp_path), tmp_path / "user.csv"
+    tricky = debod(name='Plaza "Mayor", Old Town', wind_sensitive=True)  # comma and quotes
+    others = [debod(), tricky, debod(city="Lisbon", name="Templo de Debod")]
+    for a in others:
+        load.save_user_attraction(a, user, curated)
+    assert load.delete_user_attraction("Madrid", "Templo de Debod", user) is True
+    assert load.load_user_attractions(user) == [tricky, debod(city="Lisbon", name="Templo de Debod")]
+    assert user.read_text(encoding="utf-8").startswith(CURATED_HEADER)
+
+
+def test_delete_matches_city_and_name_ignoring_case(tmp_path):
+    curated, user = curated_file(tmp_path), tmp_path / "user.csv"
+    load.save_user_attraction(debod(), user, curated)
+    assert load.delete_user_attraction("Madrid", "TEMPLO de debod", user) is True
+    assert load.load_user_attractions(user) == []
+
+
+def test_delete_needs_the_right_city(tmp_path):
+    curated, user = curated_file(tmp_path), tmp_path / "user.csv"
+    load.save_user_attraction(debod(), user, curated)
+    assert load.delete_user_attraction("Lisbon", "Templo de Debod", user) is False
+    assert load.load_user_attractions(user) == [debod()]
+
+
+def test_delete_of_an_absent_attraction_returns_false_and_changes_nothing(tmp_path):
+    curated, user = curated_file(tmp_path), tmp_path / "user.csv"
+    load.save_user_attraction(debod(), user, curated)
+    before = user.read_bytes()
+    assert load.delete_user_attraction("Madrid", "Nowhere", user) is False
+    assert user.read_bytes() == before
+
+
+def test_delete_does_not_create_a_missing_file(tmp_path):
+    user = tmp_path / "data" / "user.csv"
+    assert load.delete_user_attraction("Madrid", "Templo de Debod", user) is False
+    assert not user.exists()
+    assert not user.parent.exists()
+
+
+def test_delete_never_touches_curated_attractions(tmp_path):
+    curated, user = curated_file(tmp_path), tmp_path / "user.csv"
+    load.save_user_attraction(debod(), user, curated)
+    curated_before = curated.read_bytes()
+    assert load.delete_user_attraction("Madrid", "Retiro Park", user) is False  # curated, not user-added
+    assert curated.read_bytes() == curated_before
+    assert [a.name for a in load.load_attractions(curated, user)] == ["Retiro Park", "Templo de Debod"]
+
+
+def test_after_deleting_the_last_attraction_the_file_is_reusable_without_a_second_header(tmp_path):
+    curated, user = curated_file(tmp_path), tmp_path / "user.csv"
+    load.save_user_attraction(debod(), user, curated)
+    assert load.delete_user_attraction("Madrid", "Templo de Debod", user) is True
+    assert load.load_user_attractions(user) == []
+    assert load.save_user_attraction(debod(name="Palacio Real"), user, curated) is True
+    assert user.read_text(encoding="utf-8").count(CURATED_HEADER) == 1
+    assert load.load_user_attractions(user) == [debod(name="Palacio Real")]
+
+
+def test_values_pandas_would_read_as_missing_survive_a_delete(tmp_path):
+    curated, user = curated_file(tmp_path), tmp_path / "user.csv"
+    for name in ["None", "NA", "Templo de Debod"]:
+        load.save_user_attraction(debod(name=name, category=""), user, curated)
+    assert load.delete_user_attraction("Madrid", "Templo de Debod", user) is True
+    loaded = load.load_user_attractions(user)
+    assert [a.name for a in loaded] == ["None", "NA"]
+    assert all(a.category == "" for a in loaded)
+
+
+def test_simultaneous_deletes_of_the_same_attraction_remove_it_once(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    curated, user = curated_file(tmp_path), tmp_path / "user.csv"
+    load.save_user_attraction(debod(), user, curated)
+    load.save_user_attraction(debod(name="Palacio Real"), user, curated)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: load.delete_user_attraction("Madrid", "Templo de Debod", user), range(8)))
+    assert results.count(True) == 1
+    assert load.load_user_attractions(user) == [debod(name="Palacio Real")]

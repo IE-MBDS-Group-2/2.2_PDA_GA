@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import csv
+import os
+import tempfile
 import threading
 from pathlib import Path
 from typing import Iterable
@@ -43,6 +45,7 @@ def save_user_city(location: Location, user_csv: Path = USER_CITIES_CSV) -> bool
 
 
 _SAVE_LOCK = threading.Lock()
+_ATTRACTION_HEADER = ["city", "name", "category", "setting", "wind_sensitive", "lat", "lon"]
 
 
 def _read_attractions(path: Path) -> list[Attraction]:
@@ -85,9 +88,37 @@ def save_user_attraction(attraction: Attraction, user_csv: Path = USER_ATTRACTIO
         with open(user_csv, "a", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             if needs_header:
-                writer.writerow(["city", "name", "category", "setting", "wind_sensitive", "lat", "lon"])
+                writer.writerow(_ATTRACTION_HEADER)
             writer.writerow([attraction.city, attraction.name, attraction.category, attraction.setting,
                              str(attraction.wind_sensitive).lower(), attraction.lat, attraction.lon])
+    return True
+
+
+def delete_user_attraction(city: str, name: str, user_csv: Path = USER_ATTRACTIONS_CSV) -> bool:
+    """Forget a user-added attraction (city and name, ignoring case). Returns False if it was not there.
+
+    Only the user file is ever touched, so curated attractions cannot be deleted. The file is
+    rewritten through a temporary file and swapped in, so a crash cannot leave it half-written.
+    """
+    user_csv = Path(user_csv)
+    key = (city, name.casefold())
+    with _SAVE_LOCK:  # same lock as saving: a delete must not interleave with a save or another delete
+        existing = _read_attractions(user_csv)
+        kept = [a for a in existing if (a.city, a.name.casefold()) != key]
+        if len(kept) == len(existing):
+            return False
+        fd, tmp_name = tempfile.mkstemp(dir=user_csv.parent, prefix=user_csv.name + ".", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(_ATTRACTION_HEADER)
+                for a in kept:
+                    writer.writerow([a.city, a.name, a.category, a.setting,
+                                     str(a.wind_sensitive).lower(), a.lat, a.lon])
+            os.replace(tmp_name, user_csv)
+        except BaseException:
+            Path(tmp_name).unlink(missing_ok=True)
+            raise
     return True
 
 
