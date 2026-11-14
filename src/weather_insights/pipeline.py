@@ -9,7 +9,7 @@ from .extract import (
     BatchResult, InvalidInputError, NominatimClient, OpenWeatherClient, fetch_many,
     validate_poi_coordinates, validate_poi_name,
 )
-from .load import append_snapshots, save_user_attraction, save_user_city
+from .load import append_snapshots, delete_user_attraction, save_user_attraction, save_user_city
 from .models import Assumptions, Attraction, Location, POICandidate, WeatherSnapshot
 from .transform import assess_city, build_grid
 
@@ -91,6 +91,14 @@ def add_attraction(city: Location, name: str, category: str, setting: str, wind_
     attraction = Attraction(city.city, validate_poi_name(name), _clean_category(category),
                             setting, bool(wind_sensitive), lat, lon)
     return attraction, save_user_attraction(attraction, user_csv, curated_csv)
+
+
+def remove_attraction(city: str, name: str, user_csv=USER_ATTRACTIONS_CSV) -> bool:
+    """Forget an attraction a user added. Returns False if there was nothing to remove.
+
+    Curated attractions live in another file and are never touched.
+    """
+    return delete_user_attraction(city, name, user_csv)
 
 
 def city_attractions(attractions: list[Attraction], city: str) -> list[Attraction]:
