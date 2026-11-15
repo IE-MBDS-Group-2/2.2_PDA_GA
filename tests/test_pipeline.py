@@ -102,3 +102,17 @@ def test_search_then_save_end_to_end(files):
     attraction, is_new = add(files, category=pick.suggested_category, lat=pick.lat, lon=pick.lon)
     assert is_new and attraction.category == "Museum"
     assert pipeline.city_attractions(load.load_attractions(*files), "Madrid")[-1].name == "Templo de Debod"
+
+
+# ---- opening hours (issue #4) ----
+def test_opening_hours_are_cleaned_and_saved(files):
+    attraction, is_new = add(files, opening_hours=" Mo-Fr   09:00-17:00 ")
+    assert is_new and attraction.opening_hours == "Mo-Fr 09:00-17:00"
+    assert load.load_attractions(*files)[-1].opening_hours == "Mo-Fr 09:00-17:00"  # read back from the file
+
+
+@pytest.mark.parametrize("bad, message", [("x" * 201, "too long"), ("Mo 10:00-12:00\nTu 10:00-12:00", "one line")])
+def test_bad_opening_hours_are_rejected_and_nothing_is_written(files, bad, message):
+    with pytest.raises(InvalidInputError, match=message):
+        add(files, opening_hours=bad)
+    assert not files[1].exists()
