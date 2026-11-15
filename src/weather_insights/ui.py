@@ -272,8 +272,51 @@ def _world_tab(cities: list[Location]) -> None:
 
 
 # ---- tab 2: city close-up ------------------------------------------------------------------------------
-def _attraction_card(a, container) -> None:
-    """One attraction as a bordered card: big verdict, then the reasons."""
+def _remove_poi(attraction) -> None:
+    """Confirm-step action: delete a user-added attraction, with a distinct message per outcome."""
+    try:
+        removed = pipeline.remove_attraction(attraction.city, attraction.name)
+    except OSError:
+        flash = ("error", "Could not update the attractions file. Check the data folder.")
+    else:
+        flash = (("success", f"Removed {attraction.name} from {attraction.city}.") if removed
+                 else ("info", f"{attraction.name} was already removed."))  # e.g. removed from another tab
+    st.session_state["poi_remove_flash"] = flash
+    st.session_state.pop("poi_remove_pending", None)
+    st.rerun()
+
+
+def _remove_control(attraction) -> None:
+    """Remove button for a user-added card; one click only asks, a second one deletes."""
+    who = f"{attraction.city}_{attraction.name}"
+    if st.session_state.get("poi_remove_pending") == (attraction.city, attraction.name):
+        st.warning(f"Remove {attraction.name} from {attraction.city}? This cannot be undone.")
+        yes, no = st.columns(2)
+        if yes.button("Yes, remove", key=f"poi_remove_yes_{who}", type="primary"):
+            _remove_poi(attraction)
+        if no.button("Cancel", key=f"poi_remove_no_{who}"):
+            st.session_state.pop("poi_remove_pending", None)
+            st.rerun()
+    elif st.button("🗑️ Remove", key=f"poi_remove_{who}"):
+        st.session_state["poi_remove_pending"] = (attraction.city, attraction.name)
+        st.rerun()
+
+
+def _removal_message(city: Location) -> None:
+    """Show the result of the last removal once, and drop a confirmation left open in another city."""
+    pending = st.session_state.get("poi_remove_pending")
+    if pending and pending[0] != city.city:
+        st.session_state.pop("poi_remove_pending")
+    message = st.session_state.pop("poi_remove_flash", None)
+    if message:
+        getattr(st, message[0])(message[1])
+
+
+def _attraction_card(a, container, removable: bool = False) -> None:
+    """One attraction as a bordered card: big verdict, then the reasons.
+
+    ``removable`` is True for places a user added (curated ones cannot be removed from the app).
+    """
     colour = VERDICT_MD_COLOR[a.verdict.value]
     with container.container(border=True):
         st.markdown(f"### {a.verdict.emoji} {a.attraction.name}")
@@ -282,6 +325,8 @@ def _attraction_card(a, container) -> None:
             st.markdown(f"- {reason}")
         st.caption(f"{a.snapshot.temp:.0f} °C · wind {a.snapshot.wind_speed:.1f} m/s · {a.snapshot.description}")
         st.link_button("📍 Open in Google Maps", a.attraction.maps_url)
+        if removable:
+            _remove_control(a.attraction)
 
 
 def _closeup_tab(cities: list[Location], attractions, assumptions: Assumptions) -> None:
@@ -349,6 +394,7 @@ def _closeup_tab(cities: list[Location], attractions, assumptions: Assumptions) 
 
     st.subheader(f"What can you visit in {city.city} right now?")
     _add_attraction_panel(city)
+    _removal_message(city)
     if not assessments:
         st.info(f"No attractions are listed for {city.city} yet. Add one with the form above.")
         return
@@ -365,8 +411,10 @@ def _closeup_tab(cities: list[Location], attractions, assumptions: Assumptions) 
     if not visible:
         st.info("No attractions match these filters. Select more settings or weather verdicts.")
     card_cols = st.columns(2)
+    user_added = {(u.city, u.name.casefold()) for u in load.load_user_attractions()}
     for i, a in enumerate(visible):
-        _attraction_card(a, card_cols[i % 2])
+        removable = (a.attraction.city, a.attraction.name.casefold()) in user_added
+        _attraction_card(a, card_cols[i % 2], removable)
 
     st.subheader("When is the best day to go?")
     chosen = st.selectbox("Attraction", city_attractions, format_func=lambda a: a.name, key="outlook_attraction")

@@ -184,3 +184,20 @@ Proposed placement: a fourth `🏍️ Ride check` tab and a "Rider" sidebar sect
 **Checked:** 215 tests pass, including seven new cases covering combined selections, defaults, empty selections, source preservation, synchronized map/card results, restoring selections and cached weather reuse across filter changes. UI checks use Streamlit AppTest and fake weather; no live API key or network calls are needed. `git diff --check` passes.
 
 **Group review:** Review and merge the implementation through a pull request referencing `Closes #12`.
+---
+
+## Feature: delete user-added attractions (issue #3)
+
+*Branch `feat/delete-poi`. Agent for this entry: Claude (Claude Code session, model `claude-sonnet-5-5`).*
+
+**Asked:** Let users delete an attraction they added by mistake. Work in small steps, tests first and shown failing, one commit per layer (`load`, `pipeline`, `ui`, README), reusing the existing helpers and the same lock as saving. Nothing is pushed or opened as a PR without asking first.
+
+**Got:**
+- `load.delete_user_attraction(city, name, user_csv)` in `load.py`: removes one row (city and name, name ignoring case) and returns False if it is not there. It reuses `_read_attractions`, takes the same `_SAVE_LOCK` as saving, and rewrites the file through a temporary file swapped in with `os.replace`, so a crash cannot leave a half-written CSV. It only ever touches the user file, so curated attractions cannot be deleted. The CSV header moved into one `_ATTRACTION_HEADER` constant shared with `save_user_attraction`.
+- `pipeline.remove_attraction(city, name)`: a thin wrapper, so the UI only talks to the pipeline.
+- `ui.py`: cards for user-added places get a "🗑️ Remove" button. The first click only asks ("Remove X from City? This cannot be undone."); "Yes, remove" deletes and "Cancel" backs out. The result (removed, already gone, disk error without the file path) is shown once under the add form. Curated cards have no button, and a confirmation left open is dropped when the user changes city.
+- `README.md`: the Remove button, the functions behind it, and that removal affects everyone sharing the same copy of `data/user_attractions.csv`.
+
+**Checked:** 232 tests pass (210 before this feature: 9 in `test_load.py`, 5 in `test_pipeline.py`, 8 in `test_ui.py`). Each group of new tests was run first and failed (missing function / missing button), then passed. The `load` tests cover only-that-row removed (including a name with a comma and quotes), case-insensitive name, absent name leaves the file byte-identical, a missing file is not created, curated rows untouched, reuse after deleting the last row with one header, and 8 simultaneous deletes removing it once. The UI was also driven once through the real close-up tab with fake weather and a temporary CSV: one Remove button (on the user-added card only), the confirm step, and an empty file after "Yes". Then checked by hand in a real browser (with an API key): added Templo de Debod to Madrid, saw Remove only on that card (not on curated ones), Cancel kept it, Yes removed it and showed the message.
+
+**Kept as-is / changed / rejected:** Kept the city match case-sensitive (only the name ignores case), because `save_user_attraction` already compares them that way. `remove_attraction` takes the city as a string, not a `Location` like `add_attraction`, because a card already has `attraction.city`. **Group review:** (a) whether the city should also ignore case; (b) removal is for everyone sharing the same copy of the file and has no undo beyond the confirm step.
