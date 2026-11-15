@@ -102,6 +102,27 @@ def validate_poi_name(raw: str) -> str:
     return name
 
 
+OPENING_HOURS_MAX_LEN = 200
+
+
+def validate_opening_hours(raw: str | None) -> str:
+    """Return tidied opening hours ("" if blank: they are optional) or raise InvalidInputError.
+
+    The text does not have to be a pattern the app can evaluate: OpenStreetMap has valid complex hours
+    ("PH off", "sunrise-sunset") that are shown as they are.
+    """
+    if raw is None:
+        return ""
+    text = str(raw)
+    # Checked before tidying, which would turn a line break into a space.
+    if any(unicodedata.category(ch) == "Cc" for ch in text):  # newlines, tabs and other control characters
+        raise InvalidInputError("Opening hours must be on one line.")
+    text = _WHITESPACE.sub(" ", text).strip()
+    if len(text) > OPENING_HOURS_MAX_LEN:
+        raise InvalidInputError(f"Opening hours are too long ({OPENING_HOURS_MAX_LEN} characters at most).")
+    return text
+
+
 def validate_coordinates(lat: float, lon: float) -> tuple[float, float]:
     try:
         lat, lon = float(lat), float(lon)
@@ -305,9 +326,11 @@ def _to_candidates(hits: list, city: Location) -> list[POICandidate]:
         km = haversine_km(city.lat, city.lon, lat, lon)
         if km > POI_MAX_KM_FROM_CITY:
             continue
+        hours = (hit.get("extratags") or {}).get("opening_hours", "")  # extratags may be missing or null
         candidates.append(POICandidate(
             hit["display_name"], round(lat, 4), round(lon, 4),
             hit.get("category", ""), hit.get("type", ""), round(km, 1),
+            opening_hours=hours.strip()[:OPENING_HOURS_MAX_LEN] if isinstance(hours, str) else "",
         ))
     return candidates
 
@@ -335,6 +358,7 @@ class NominatimClient(JSONAPIClient):
             "accept-language": "en",  # English labels instead of the local language
             "viewbox": f"{lon - box},{lat + box},{lon + box},{lat - box}",  # left, top, right, bottom
             "bounded": 1,  # 1 = only return results inside the box
+            "extratags": 1,  # also return OSM tags such as opening_hours
         }
         hits = self._get("search", params, what="place")
         unexpected = ServerError("The place search service sent an unexpected answer.")
