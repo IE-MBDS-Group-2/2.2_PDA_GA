@@ -184,6 +184,7 @@ Proposed placement: a fourth `🏍️ Ride check` tab and a "Rider" sidebar sect
 **Checked:** 215 tests pass, including seven new cases covering combined selections, defaults, empty selections, source preservation, synchronized map/card results, restoring selections and cached weather reuse across filter changes. UI checks use Streamlit AppTest and fake weather; no live API key or network calls are needed. `git diff --check` passes.
 
 **Group review:** Review and merge the implementation through a pull request referencing `Closes #12`.
+
 ---
 
 ## Feature: delete user-added attractions (issue #3)
