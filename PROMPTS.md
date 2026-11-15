@@ -182,9 +182,11 @@ Proposed placement: a fourth `🏍️ Ride check` tab and a "Rider" sidebar sect
 city's local time for simple patterns only, raw text otherwise, never crash; prefill from OpenStreetMap when a
 user adds a place; no extra weather API calls; old CSVs must still load. Hours must come from OSM or stay blank.
 
-**Got:** in progress.
+**Got:** (in progress)
+- `models.py`: `OpeningHours` (frozen dataclass: `__bool__`, `__str__`, `is_understood` property, `is_open(at)`, `summary(at)`) on top of a private `_parse_opening_hours` that uses `re.fullmatch` and returns None (never raises) for anything beyond simple patterns. `Attraction.opening_hours` and `POICandidate.opening_hours` added as the last field with default `""`, plus `Attraction.hours`.
 
-**Checked:** in progress.
+**Checked:** (in progress)
+- 22 new model tests built from hand-made datetimes (week of 16-22 Nov 2026, checked with `.weekday()`): end exclusive at 17:00, `Mo off`, lunch break, later rule overriding Sunday, overnight `Fr-Sa 22:00-03:00` spilling into Sat and Sun mornings, wrap-around `Fr-Mo`, and 7 "not understood" inputs (`PH off`, `sunrise-sunset`, months, quotes, 25:00, 09:60, `Xx`) that return None without raising.
 
 **Kept as-is / changed / rejected:** in progress.
 **Group review:** (a) only simple OSM patterns are evaluated, complex ones show text; (b) the #13 header interaction;
