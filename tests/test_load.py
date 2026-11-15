@@ -90,6 +90,7 @@ def test_each_attraction_is_near_its_city():
 
 # ---- attractions added by users ----
 CURATED_HEADER = "city,name,category,setting,wind_sensitive,lat,lon\n"
+USER_HEADER = "city,name,category,setting,wind_sensitive,lat,lon,opening_hours\n"  # what the app writes
 
 
 def debod(**kw):
@@ -114,7 +115,7 @@ def test_saved_attraction_round_trips_with_every_field(tmp_path):
     curated, user = curated_file(tmp_path), tmp_path / "data" / "user.csv"  # folder is created
     original = debod(name='Plaza "Mayor", Old Town', wind_sensitive=True)  # comma and quotes
     load.save_user_attraction(original, user, curated)
-    assert user.read_text(encoding="utf-8").startswith(CURATED_HEADER)
+    assert user.read_text(encoding="utf-8").startswith(USER_HEADER)
     assert load.load_attractions(NO_USER_FILE, user) == [original]
 
 
@@ -145,7 +146,7 @@ def test_an_empty_user_file_is_treated_as_no_attractions_and_gets_a_header(tmp_p
     user.write_text("")  # e.g. left behind by a crash or a manual edit
     assert [a.name for a in load.load_attractions(curated, user)] == ["Retiro Park"]
     assert load.save_user_attraction(debod(), user, curated) is True
-    assert user.read_text(encoding="utf-8").startswith(CURATED_HEADER)
+    assert user.read_text(encoding="utf-8").startswith(USER_HEADER)
     assert [a.name for a in load.load_attractions(curated, user)] == ["Retiro Park", "Templo de Debod"]
 
 
@@ -160,4 +161,48 @@ def test_simultaneous_saves_of_the_same_attraction_add_it_once(tmp_path):
 
 def test_missing_files_mean_no_attractions():
     assert load.load_attractions(NO_USER_FILE, NO_USER_FILE) == []
+
+
+# ---- opening hours (issue #4) ----
+def test_a_file_without_the_hours_column_still_loads(tmp_path):
+    (retiro,) = load.load_attractions(curated_file(tmp_path), NO_USER_FILE)  # the old 7-column format
+    assert retiro.opening_hours == ""
+
+
+def test_a_file_with_the_hours_column_loads_them(tmp_path):
+    path = tmp_path / "curated.csv"
+    path.write_text("city,name,category,setting,wind_sensitive,lat,lon,opening_hours\n"
+                    'Madrid,Museo del Prado,Museum,indoor,false,40.4138,-3.6921,"Mo-Sa 10:00-20:00; Su 10:00-19:00"\n'
+                    "Madrid,Retiro Park,Park,outdoor,false,40.4153,-3.6845,\n")
+    prado, retiro = load.load_attractions(path, NO_USER_FILE)
+    assert prado.opening_hours == "Mo-Sa 10:00-20:00; Su 10:00-19:00"
+    assert retiro.opening_hours == ""  # blank, not NaN
+
+
+def test_hours_with_a_comma_and_a_semicolon_round_trip(tmp_path):
+    curated, user = curated_file(tmp_path), tmp_path / "user.csv"
+    original = debod(opening_hours="Mo-Fr 09:00-13:00,15:00-19:00; Sa 10:00-14:00")
+    assert load.save_user_attraction(original, user, curated) is True
+    assert load.load_attractions(NO_USER_FILE, user) == [original]
+
+
+def test_an_old_user_file_is_migrated_when_a_new_attraction_is_saved(tmp_path):
+    curated, user = curated_file(tmp_path), tmp_path / "user.csv"
+    user.write_text(CURATED_HEADER
+                    + "Madrid,Templo de Debod,Temple,outdoor,false,40.4241,-3.7176\n"
+                    + "Madrid,Casa de Campo,Park,outdoor,false,40.4242,-3.7559\n")
+    sorolla = debod(name="Museo Sorolla", category="Museum", setting="indoor", lat=40.4356, lon=-3.6925,
+                    opening_hours="Tu-Sa 09:30-20:00; Su 10:00-15:00")
+    assert load.save_user_attraction(sorolla, user, curated) is True
+    loaded = load.load_attractions(NO_USER_FILE, user)
+    assert [(a.name, a.opening_hours) for a in loaded] == [
+        ("Templo de Debod", ""), ("Casa de Campo", ""), ("Museo Sorolla", "Tu-Sa 09:30-20:00; Su 10:00-15:00"),
+    ]
+    header = user.read_text(encoding="utf-8").splitlines()[0]
+    assert header.endswith(",opening_hours")
+
+
+def test_the_shipped_catalogue_has_text_hours_on_every_row():
+    attractions = shipped_attractions()
+    assert attractions and all(isinstance(a.opening_hours, str) for a in attractions)
 

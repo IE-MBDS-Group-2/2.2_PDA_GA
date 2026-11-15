@@ -184,9 +184,11 @@ user adds a place; no extra weather API calls; old CSVs must still load. Hours m
 
 **Got:** (in progress)
 - `models.py`: `OpeningHours` (frozen dataclass: `__bool__`, `__str__`, `is_understood` property, `is_open(at)`, `summary(at)`) on top of a private `_parse_opening_hours` that uses `re.fullmatch` and returns None (never raises) for anything beyond simple patterns. `Attraction.opening_hours` and `POICandidate.opening_hours` added as the last field with default `""`, plus `Attraction.hours`.
+- `load.py`: `_read_attractions` reads an optional `opening_hours` column (`""` when a file has none). `save_user_attraction` writes the header from one constant, `_ATTRACTION_HEADER` (same name as PR #13), and first migrates an older user file without the column, inside `_SAVE_LOCK`, through a temp file + `os.replace`.
 
 **Checked:** (in progress)
 - 22 new model tests built from hand-made datetimes (week of 16-22 Nov 2026, checked with `.weekday()`): end exclusive at 17:00, `Mo off`, lunch break, later rule overriding Sunday, overnight `Fr-Sa 22:00-03:00` spilling into Sat and Sun mornings, wrap-around `Fr-Mo`, and 7 "not understood" inputs (`PH off`, `sunrise-sunset`, months, quotes, 25:00, 09:60, `Xx`) that return None without raising.
+- 5 new load tests: old file without the column, file with it, a comma + semicolon round trip, migration of a 2-row old user file (3 rows after saving, old ones with `""`), shipped catalogue. Two existing tests now expect the new 8-column user header instead of the 7-column one (the same full-line check, not loosened); Riccardo approved.
 
 **Kept as-is / changed / rejected:** in progress.
 **Group review:** (a) only simple OSM patterns are evaluated, complex ones show text; (b) the #13 header interaction;
