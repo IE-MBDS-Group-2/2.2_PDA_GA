@@ -171,3 +171,21 @@ Proposed placement: a fourth `🏍️ Ride check` tab and a "Rider" sidebar sect
 **Checked:** 208 tests pass, including one for the link format and encoding of special characters (`'`, `&`, `/`, accents). Opened a sample of ~80 of the 260 links in a browser: about 3 in 4 went straight to the right place page. Most of the rest are activity or vague names ("Seine River Cruise", "Desert Safari", "Plaza Mayor") that open a list of results. With coordinates added, a spot check of 6 showed V&A Waterfront fixed (it had been searched in Madrid), working links unchanged, and lists centred on the right spot.
 
 **Kept as-is / changed / rejected:** Changed twice: coordinate-only links (pin only, no place info) → name-only search (wrong matches for some names) → name + coordinates. **Group review:** (a) the `/maps/search/…/@lat,lon` format is widely used but not part of Google's documented Maps URL API, so Google could change its behaviour; (b) ~20 attractions with activity-style names still open a results list; giving them names Google recognises (e.g. "Bateaux Parisiens") would fix that; (c) decide whether Jakarta should stay in `user_cities.csv` or be removed.
+
+---
+
+## Feature: opening hours on attraction cards (issue #4)
+
+*Branch `feat/opening-hours`. Agent for this entry: Claude (Claude Code session, model `claude-opus-5-5`). Driven by Riccardo Bellini.*
+
+**Asked:** Show opening hours on POIs where applicable (#4): an optional column, an "open now?" check using the
+city's local time for simple patterns only, raw text otherwise, never crash; prefill from OpenStreetMap when a
+user adds a place; no extra weather API calls; old CSVs must still load. Hours must come from OSM or stay blank.
+
+**Got:** in progress.
+
+**Checked:** in progress.
+
+**Kept as-is / changed / rejected:** in progress.
+**Group review:** (a) only simple OSM patterns are evaluated, complex ones show text; (b) the #13 header interaction;
+(c) OSM hours can be outdated: the card says "check before going" when unsure.
