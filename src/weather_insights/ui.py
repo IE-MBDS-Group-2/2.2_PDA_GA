@@ -333,6 +333,27 @@ def _plain(text: str) -> str:
     return _MARKDOWN_SPECIAL.sub(r"\\\1", text)
 
 
+def _hours_section(hours, local_time) -> None:
+    """Folded "Opening hours" section of a card: open/closed in the title, a two-column table inside.
+
+    Nothing at all when no hours are known. Every cell goes through _plain: hours can be typed by any user,
+    so they must never become links or styling.
+    """
+    heading = hours.heading(local_time)
+    if heading is None:
+        return
+    weekly = hours.is_understood
+    today = local_time.weekday()
+    lines = ["| Day | Hours |" if weekly else "| When | Hours |", "|---|---|"]
+    for i, (when, text) in enumerate(hours.table()):
+        when, text = _plain(when) or " ", _plain(text)
+        if weekly and i == today:
+            when, text = f"**{when}**", f"**{text}**"
+        lines.append(f"| {when} | {text} |")
+    with st.expander(heading):
+        st.markdown("\n".join(lines))
+
+
 def _attraction_card(a, container, removable: bool = False) -> None:
     """One attraction as a bordered card: big verdict, then the reasons.
 
@@ -345,9 +366,7 @@ def _attraction_card(a, container, removable: bool = False) -> None:
         for reason in a.reasons:
             st.markdown(f"- {reason}")
         st.caption(f"{a.snapshot.temp:.0f} °C · wind {a.snapshot.wind_speed:.1f} m/s · {a.snapshot.description}")
-        line = a.attraction.hours.summary(a.snapshot.local_time)  # the city's clock: no extra API call
-        if line:
-            st.caption(_plain(line))  # hours can be typed by any user: never let them become links or styling
+        _hours_section(a.attraction.hours, a.snapshot.local_time)  # the city's clock: no extra API call
         st.link_button("📍 Open in Google Maps", a.attraction.maps_url)
         if removable:
             _remove_control(a.attraction)

@@ -193,3 +193,51 @@ def test_attraction_hours_are_optional():
     assert old_style.opening_hours == "" and not old_style.hours
     always = Attraction("Madrid", "Prado", "Museum", "indoor", False, 40.4, -3.7, opening_hours="24/7")
     assert always.hours.is_open(at("Sun", 3)) is True
+
+
+# ---- opening hours as a table on the card ----
+WEEK = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
+def test_simple_hours_become_one_row_per_weekday():
+    rows = hours("Mo-Sa 10:00-20:00; Su 10:00-19:00").table()
+    assert rows == [(day, "10:00–20:00") for day in WEEK[:6]] + [("Sun", "10:00–19:00")]
+
+
+def test_the_weekday_table_applies_overrides_breaks_overnight_and_closed_days():
+    rows = dict(hours("Mo-Fr 09:00-13:00,15:00-19:00; Fr-Sa 22:00-03:00; Su off").table())
+    assert list(rows) == list(WEEK)
+    assert rows["Mon"] == "09:00–13:00, 15:00–19:00"  # lunch break
+    assert rows["Fri"] == "22:00–03:00"  # the later rule replaces Friday's daytime hours
+    assert rows["Sat"] == "22:00–03:00"  # shown as written, not split at midnight
+    assert rows["Sun"] == "Closed"
+
+
+def test_24_7_reads_as_open_all_day():
+    assert hours("24/7").table() == [(day, "Open 24 hours") for day in WEEK]
+
+
+def test_complex_hours_become_one_row_per_rule():
+    rows = hours("Mo-Su 10:30-17:30; Sa 10:30-19:00; Dec 25 off; Nov Th[4] off").table()  # MoMA, from OSM
+    assert rows == [("Mon–Sun", "10:30–17:30"), ("Sat", "10:30–19:00"), ("Dec 25", "Closed"),
+                    ("Nov Thu[4]", "Closed")]
+
+
+def test_rule_rows_tidy_months_dates_and_holidays():
+    rows = hours("Oct-Mar: 10:00-18:00; Jul 25,Oct 12: 10:00-15:00; 09:00-12:00; PH off; sunrise-sunset").table()
+    assert rows == [("Oct–Mar", "10:00–18:00"), ("Jul 25, Oct 12", "10:00–15:00"), ("Every day", "09:00–12:00"),
+                    ("Public holidays", "Closed"), ("", "sunrise-sunset")]  # unknown pieces shown as written
+
+
+def test_no_hours_no_table():
+    assert hours("").table() == []
+    assert hours("").heading(at("Wed", 12)) is None
+
+
+@pytest.mark.parametrize("raw, when, expected", [
+    ("Mo-Fr 09:00-17:00", at("Wed", 10), "🕘 Open now · Opening hours"),
+    ("Mo-Fr 09:00-17:00", at("Sat", 10), "🔒 Closed now · Opening hours"),
+    ("Mo-Su 10:30-17:30; Dec 25 off", at("Wed", 12), "🕘 Opening hours (check before going)"),
+])
+def test_the_heading_says_open_closed_or_check(raw, when, expected):
+    assert hours(raw).heading(when) == expected
