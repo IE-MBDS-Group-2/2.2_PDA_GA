@@ -305,6 +305,7 @@ def test_search_asks_nominatim_for_english_results_inside_the_city_box():
     assert params["limit"] == POI_MAX_RESULTS
     left, top, right, bottom = (float(v) for v in params["viewbox"].split(","))
     assert left < MADRID.lon < right and bottom < MADRID.lat < top
+    assert params["extratags"] == 1  # also return OSM tags such as opening_hours
 
 
 def test_search_identifies_the_app_with_a_user_agent():
@@ -377,3 +378,33 @@ def test_poi_coordinates_at_the_distance_limit():
 def test_poi_coordinates_must_be_real_numbers(lat, lon):
     with pytest.raises(InvalidInputError):
         validate_poi_coordinates(MADRID, lat, lon)
+
+
+# ---- opening hours (issue #4) ----
+def test_candidates_carry_the_openstreetmap_opening_hours():
+    with_hours = {**hit("Museo Sorolla, Madrid"), "extratags": {"opening_hours": " Tu-Su 10:00-20:00 "}}
+    no_tags = hit("Templo de Debod, Madrid")
+    null_tags = {**hit("Casa de Campo, Madrid"), "extratags": None}
+    found = place_client(FakeResponse(200, [with_hours, no_tags, null_tags])).search_poi("Museo", MADRID)
+    assert [c.opening_hours for c in found] == ["Tu-Su 10:00-20:00", "", ""]
+
+
+@pytest.mark.parametrize("raw", [None, "", "   "])
+def test_blank_opening_hours_are_allowed(raw):
+    from weather_insights.extract import validate_opening_hours
+    assert validate_opening_hours(raw) == ""
+
+
+def test_opening_hours_are_tidied():
+    from weather_insights.extract import validate_opening_hours
+    assert validate_opening_hours("  Mo-Fr   09:00-17:00 ") == "Mo-Fr 09:00-17:00"
+
+
+@pytest.mark.parametrize("raw, message", [
+    ("x" * 201, "too long"),
+    ("Mo 9-5\nTu 9-5", "on one line"),
+])
+def test_bad_opening_hours_are_rejected(raw, message):
+    from weather_insights.extract import validate_opening_hours
+    with pytest.raises(InvalidInputError, match=message):
+        validate_opening_hours(raw)

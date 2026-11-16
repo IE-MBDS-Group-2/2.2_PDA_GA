@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from .config import ATTRACTIONS_CSV, LOG_CSV, USER_ATTRACTIONS_CSV, get_api_key
 from .extract import (
     BatchResult, InvalidInputError, NominatimClient, OpenWeatherClient, fetch_many,
-    validate_poi_coordinates, validate_poi_name,
+    validate_opening_hours, validate_poi_coordinates, validate_poi_name,
 )
-from .load import append_snapshots, save_user_attraction, save_user_city
+from .load import append_snapshots, delete_user_attraction, save_user_attraction, save_user_city
 from .models import Assumptions, Attraction, Location, POICandidate, WeatherSnapshot
 from .transform import assess_city, build_grid
 
@@ -80,7 +80,7 @@ def _clean_category(raw: str) -> str:
 
 def add_attraction(city: Location, name: str, category: str, setting: str, wind_sensitive: bool,
                    lat: float, lon: float, user_csv=USER_ATTRACTIONS_CSV,
-                   curated_csv=ATTRACTIONS_CSV) -> tuple[Attraction, bool]:
+                   curated_csv=ATTRACTIONS_CSV, opening_hours: str = "") -> tuple[Attraction, bool]:
     """Validate and remember a user-added attraction. Returns (attraction, is_new).
 
     Raises InvalidInputError for bad input; is_new is False if the city already has that name.
@@ -89,8 +89,17 @@ def add_attraction(city: Location, name: str, category: str, setting: str, wind_
         raise InvalidInputError(f"Choose where it takes place: {', '.join(SETTINGS)}.")
     lat, lon = validate_poi_coordinates(city, lat, lon)
     attraction = Attraction(city.city, validate_poi_name(name), _clean_category(category),
-                            setting, bool(wind_sensitive), lat, lon)
+                            setting, bool(wind_sensitive), lat, lon,
+                            opening_hours=validate_opening_hours(opening_hours))  # checked before saving
     return attraction, save_user_attraction(attraction, user_csv, curated_csv)
+
+
+def remove_attraction(city: str, name: str, user_csv=USER_ATTRACTIONS_CSV) -> bool:
+    """Forget an attraction a user added. Returns False if there was nothing to remove.
+
+    Curated attractions live in another file and are never touched.
+    """
+    return delete_user_attraction(city, name, user_csv)
 
 
 def city_attractions(attractions: list[Attraction], city: str) -> list[Attraction]:

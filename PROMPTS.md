@@ -154,3 +154,87 @@ Proposed placement: a fourth `🏍️ Ride check` tab and a "Rider" sidebar sect
 **Checked:** Read `models.py`, `extract.py`, `config.py`, `main.py`, the README and the module outlines. Found one prerequisite: `WeatherSnapshot` stores `wind_speed` but not wind direction (`wind.deg`) or gusts (`wind.gust`), which OpenWeatherMap already returns; crosswind needs both. Adding them changes `LOG_COLUMNS`, so `load.py` must tolerate older log rows without those columns.
 
 **Kept as-is / changed / rejected:** Not built yet. **Group review:** decide which features to build (1-6 fit one PR; 7 reuses existing code; 8 and 9 are separate add-ons), and agree on the rider thresholds (wind-chill bands, crosswind / gust limits, ice temperature) before they are coded.
+
+---
+
+## Feature: Google Maps link on every attraction card
+
+*Branch `feat/add-maps`. Agent for this entry: Claude (Claude Code session, model `claude-opus-5-5`).*
+
+**Asked:** Add a Google Maps link to the points of interest. Along the way: add the missing cities that made the catalogue tests fail, check the coordinates against a real source (not the model's memory), and have the link open the place's own Google Maps page (reviews, hours, photos) rather than a bare pin.
+
+**Got:**
+- `Attraction.maps_url` in `models.py` and a "📍 Open in Google Maps" button on each verdict card in `ui.py`. The link searches for "name, city" centred on the attraction's coordinates (`/maps/search/<name, city>/@lat,lon,17z`). The name opens the place page, and the coordinates make Google pick the match at that spot.
+- `data/cities.csv`: added Washington D.C. and Abu Dhabi, which already had attractions but no city row (26 cities, matching the README). Both city-centre coordinates were taken from OpenStreetMap Nominatim.
+- `tests/test_load.py`: the catalogue tests now load only the curated `cities.csv` (`shipped_cities()`), so cities users add in the app (e.g. the committed "Special capital Region of Jakarta" in `user_cities.csv`) cannot break them. Claude first added 10 Jakarta attractions to make the test pass; we rejected that because Jakarta was a user-added city, and fixed the test instead.
+
+**Checked:** 208 tests pass, including one for the link format and encoding of special characters (`'`, `&`, `/`, accents). Opened a sample of ~80 of the 260 links in a browser: about 3 in 4 went straight to the right place page. Most of the rest are activity or vague names ("Seine River Cruise", "Desert Safari", "Plaza Mayor") that open a list of results. With coordinates added, a spot check of 6 showed V&A Waterfront fixed (it had been searched in Madrid), working links unchanged, and lists centred on the right spot.
+
+**Kept as-is / changed / rejected:** Changed twice: coordinate-only links (pin only, no place info) → name-only search (wrong matches for some names) → name + coordinates. **Group review:** (a) the `/maps/search/…/@lat,lon` format is widely used but not part of Google's documented Maps URL API, so Google could change its behaviour; (b) ~20 attractions with activity-style names still open a results list; giving them names Google recognises (e.g. "Bateaux Parisiens") would fix that; (c) decide whether Jakarta should stay in `user_cities.csv` or be removed.
+
+
+---
+
+## Feature: filter attractions by setting (issue #12)
+
+**Asked:** Implement indoor, outdoor and mixed setting filters, combined with weather verdicts, on Farah's existing `Farah---D` branch; document the work in commits.
+
+**Got:** Codex added a pure combined-filter helper and setting controls above the close-up map. Cards and map pins use the same filtered assessments, all options start selected, and no matches produces a helpful message. Totals and the forecast selector retain their city-wide scope. The README explains these behaviours. No saved attraction data is changed.
+
+**Checked:** 215 tests pass, including seven new cases covering combined selections, defaults, empty selections, source preservation, synchronized map/card results, restoring selections and cached weather reuse across filter changes. UI checks use Streamlit AppTest and fake weather; no live API key or network calls are needed. `git diff --check` passes.
+
+**Group review:** Review and merge the implementation through a pull request referencing `Closes #12`.
+
+---
+
+## Feature: delete user-added attractions (issue #3)
+
+*Branch `feat/delete-poi`. Agent for this entry: Claude (Claude Code session, model `claude-sonnet-5-5`).*
+
+**Asked:** Let users delete an attraction they added by mistake. Work in small steps, tests first and shown failing, one commit per layer (`load`, `pipeline`, `ui`, README), reusing the existing helpers and the same lock as saving. Nothing is pushed or opened as a PR without asking first.
+
+**Got:**
+- `load.delete_user_attraction(city, name, user_csv)` in `load.py`: removes one row (city and name, name ignoring case) and returns False if it is not there. It reuses `_read_attractions`, takes the same `_SAVE_LOCK` as saving, and rewrites the file through a temporary file swapped in with `os.replace`, so a crash cannot leave a half-written CSV. It only ever touches the user file, so curated attractions cannot be deleted. The CSV header moved into one `_ATTRACTION_HEADER` constant shared with `save_user_attraction`.
+- `pipeline.remove_attraction(city, name)`: a thin wrapper, so the UI only talks to the pipeline.
+- `ui.py`: cards for user-added places get a "🗑️ Remove" button. The first click only asks ("Remove X from City? This cannot be undone."); "Yes, remove" deletes and "Cancel" backs out. The result (removed, already gone, disk error without the file path) is shown once under the add form. Curated cards have no button, and a confirmation left open is dropped when the user changes city.
+- `README.md`: the Remove button, the functions behind it, and that removal affects everyone sharing the same copy of `data/user_attractions.csv`.
+
+**Checked:** 232 tests pass (210 before this feature: 9 in `test_load.py`, 5 in `test_pipeline.py`, 8 in `test_ui.py`). Each group of new tests was run first and failed (missing function / missing button), then passed. The `load` tests cover only-that-row removed (including a name with a comma and quotes), case-insensitive name, absent name leaves the file byte-identical, a missing file is not created, curated rows untouched, reuse after deleting the last row with one header, and 8 simultaneous deletes removing it once. The UI was also driven once through the real close-up tab with fake weather and a temporary CSV: one Remove button (on the user-added card only), the confirm step, and an empty file after "Yes". Then checked by hand in a real browser (with an API key): added Templo de Debod to Madrid, saw Remove only on that card (not on curated ones), Cancel kept it, Yes removed it and showed the message.
+
+**Kept as-is / changed / rejected:** Kept the city match case-sensitive (only the name ignores case), because `save_user_attraction` already compares them that way. `remove_attraction` takes the city as a string, not a `Location` like `add_attraction`, because a card already has `attraction.city`. **Group review:** (a) whether the city should also ignore case; (b) removal is for everyone sharing the same copy of the file and has no undo beyond the confirm step.
+
+---
+
+## Feature: opening hours on attraction cards (issue #4)
+
+*Branch `feat/opening-hours`. Agent for this entry: Claude (Claude Code session, model `claude-opus-5-5`). Driven by Riccardo Bellini.*
+
+**Asked:** Show opening hours on POIs where applicable (#4): an optional column, an "open now?" check using the
+city's local time for simple patterns only, raw text otherwise, never crash; prefill from OpenStreetMap when a
+user adds a place; no extra weather API calls; old CSVs must still load. Hours must come from OSM or stay blank.
+
+**Got:**
+- `models.py`: `OpeningHours` (frozen dataclass: `__bool__`, `__str__`, `is_understood` property, `is_open(at)`, `summary(at)`) on top of a private `_parse_opening_hours` that uses `re.fullmatch` and returns None (never raises) for anything beyond simple patterns. `Attraction.opening_hours` and `POICandidate.opening_hours` added as the last field with default `""`, plus `Attraction.hours`.
+- `load.py`: `_read_attractions` reads an optional `opening_hours` column (`""` when a file has none). `save_user_attraction` writes the header from one constant, `_ATTRACTION_HEADER` (same name as PR #13), and first migrates an older user file without the column, inside `_SAVE_LOCK`, through a temp file + `os.replace`.
+- `extract.py`: Nominatim search sends `extratags=1`; `_to_candidates` copies the OSM `opening_hours` tag into `POICandidate` (`""` when `extratags` is missing, null or not text). New `validate_opening_hours` (optional; one line; at most `OPENING_HOURS_MAX_LEN = 200`), which does not require an evaluable pattern.
+- `pipeline.py` + `ui.py`: `add_attraction(..., opening_hours="")` validates the hours before saving. Cards show one extra caption from `Attraction.hours.summary(snapshot.local_time)` (nothing when blank), so no extra weather API call. The add form has an editable "Opening hours (optional)" field prefilled from the OpenStreetMap match, passed to the pipeline as a keyword. The card line goes through a small `ui._plain` helper that backslash-escapes markdown characters, because `st.caption` renders markdown and hours can be typed by any user.
+- `data/attractions.csv`: new `opening_hours` column, filled for 69 of the 131 indoor/mixed rows from OpenStreetMap (outdoor rows stay blank). Done by a throwaway script outside the repo (`Documents\oh_fill\fill_hours.py`, not committed) that reuses `NominatimClient` (1 request/s, the app's User-Agent), keeps the first match within 0.3 km of the row's own coordinates that has an `opening_hours` tag, and skips failed lookups (`APIError`; there were none). Rows without such a match stay blank.
+
+**Checked:**
+- 22 new model tests built from hand-made datetimes (week of 16-22 Nov 2026, checked with `.weekday()`): end exclusive at 17:00, `Mo off`, lunch break, later rule overriding Sunday, overnight `Fr-Sa 22:00-03:00` spilling into Sat and Sun mornings, wrap-around `Fr-Mo`, and 7 "not understood" inputs (`PH off`, `sunrise-sunset`, months, quotes, 25:00, 09:60, `Xx`) that return None without raising.
+- 5 new load tests: old file without the column, file with it, a comma + semicolon round trip, migration of a 2-row old user file (3 rows after saving, old ones with `""`), shipped catalogue. Two existing tests now expect the new 8-column user header instead of the 7-column one (the same full-line check, not loosened); Riccardo approved.
+- 7 new extract tests (hours present / no `extratags` / `extratags: null`; blank, tidied, too long, multi-line) plus one added assertion, `params["extratags"] == 1`, in the existing Nominatim request test. All offline with `FakeSession`.
+- 3 new pipeline tests (cleaned value saved and read back; too long / multi-line rejected with nothing written) and 1 `AppTest` UI test (field prefilled from the match, value passed to `add_attraction`; the `saved` recorder was extended, not changed), plus 4 escaping cases (a markdown link, `:red[...]`, code/bold/maths, and real OSM hours with `Sa[1]`), seen failing before the helper existed. Total 250 passed (208 before).
+- Data fill: compared with pandas, every other column is identical to the previous file and no outdoor row has hours; 55 of the 69 filled values get an Open/Closed check, the other 14 (months, holidays) show as text. 5 random rows shown to Riccardo for a spot check against OpenStreetMap.org.
+- Manual check by Riccardo in the browser (`uv run python main.py`, City close-up → Madrid, Sunday evening, 15 Nov): Prado "Closed now", Mercado de San Miguel "Open now", Royal Palace's complex hours shown as text with "check before going" and no stray backslashes, no hours line on Retiro Park; the add form prefilled "Opening hours (optional)" for Museo Sorolla and it was editable. The test place was not saved. Reported as correct by Riccardo; no screenshot attached to this entry.
+
+**Kept as-is / changed / rejected:** Kept the weather verdicts unchanged. Changed: Claude pointed out that typed hours such as `[Free entry](http://…)` would render as a real link on every card; Riccardo chose to escape them when drawn rather than reject `[` in the validator, which would refuse valid OSM hours like `Sa[1]`. Rejected: filling hours from the model's memory; only OpenStreetMap values are used.
+**Group review:** (a) only simple OSM patterns are evaluated, complex ones show text; (b) the #13 header interaction;
+(c) OSM hours can be outdated: the card says "check before going" when unsure.
+
+**Follow-up (16 Nov), asked:** Riccardo, after seeing MoMA's card in the app ("Mo-Su 10:30-17:30; Sa 10:30-19:00; Dec 25 off; Nov Th[4] off" as one grey line): "the opening hours are barely readable, can you put them in a table format so it's easier to look at".
+**Got:** the caption line is replaced by a folded section per card, `ui._hours_section`, whose title is `OpeningHours.heading(at)` ("🕘 Open now · Opening hours", "🔒 Closed now · Opening hours" or "🕘 Opening hours (check before going)") and whose body is a two-column markdown table from `OpeningHours.table()`. Simple patterns give Mon–Sun rows with later rules applied and today in bold; complex ones give one row per rule with day codes written out (`Nov Th[4] off` → "Nov Thu[4] | Closed", `PH` → "Public holidays"). The parser was split into `_parse_week` (hours as written, used for the table) and `_parse_opening_hours` (overnight split at midnight, used for open-now). Every cell still goes through `_plain`.
+**Checked:** 12 new tests written first and seen failing (9 model: weekday rows, override + lunch break + overnight + closed day, 24/7, MoMA's rules, months/dates/holidays/unknown pieces, blank, 3 headings; 3 `AppTest` cards: weekday table with Thursday in bold, rule table with escaped brackets, no section when blank). 295 passed after pulling #13 and #15.
+**Kept / changed:** folded by default so the two-column card grid stays short; the open/closed status stays visible in the title.
+
+**Follow-up (16 Nov), review fixes:** Miguel asked the agent (Claude Code) to apply the non-blocking points from the #14 review. (a) Removed `OpeningHours.summary()`, unused by the UI since the hours table; its tests now check `heading()`. (b) The parser accepts one-digit hours and spaces around the dash, so OSM values such as `9:00 - 20:15` (Manila Ocean Park) and `Mo-Sa 9:00-19:00` (Grand Bazaar) get an open/closed check and a weekday table: 57 of 69 curated hours are evaluated, up from 55, and no other row changed. (c) Ranges past midnight read "22:00–03:00 (next day)" in the table. **Checked:** new tests written first and seen failing; 299 passed.

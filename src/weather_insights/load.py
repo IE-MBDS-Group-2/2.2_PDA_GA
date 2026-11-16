@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import csv
+import os
+import tempfile
 import threading
 from pathlib import Path
 from typing import Iterable
@@ -43,6 +45,8 @@ def save_user_city(location: Location, user_csv: Path = USER_CITIES_CSV) -> bool
 
 
 _SAVE_LOCK = threading.Lock()
+# Columns of the user attractions file. opening_hours is optional and last: older files without it still load.
+_ATTRACTION_HEADER = ("city", "name", "category", "setting", "wind_sensitive", "lat", "lon", "opening_hours")
 
 
 def _read_attractions(path: Path) -> list[Attraction]:
@@ -54,9 +58,30 @@ def _read_attractions(path: Path) -> list[Attraction]:
     # which would break a place called "None". Numbers are converted explicitly below.
     df = pd.read_csv(path, dtype=str, keep_default_na=False)
     return [
-        Attraction(r.city, r.name, r.category, r.setting, str(r.wind_sensitive).lower() == "true", float(r.lat), float(r.lon))
+        Attraction(r.city, r.name, r.category, r.setting, str(r.wind_sensitive).lower() == "true", float(r.lat), float(r.lon),
+                   opening_hours=getattr(r, "opening_hours", ""))  # files from before the column get ""
         for r in df.itertuples()
     ]
+
+
+def _add_missing_columns(user_csv: Path) -> None:
+    """Rewrite an older user file with the current header ("" for new columns). Call with _SAVE_LOCK held.
+
+    Appending an 8-field row under a 7-field header would make the next read fail, so the file is upgraded
+    first. It is written to a temporary file and swapped in, so a crash cannot leave it half-written.
+    """
+    with open(user_csv, newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    fd, tmp = tempfile.mkstemp(dir=user_csv.parent, prefix=user_csv.name, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(_ATTRACTION_HEADER)
+            writer.writerows([row.get(column) or "" for column in _ATTRACTION_HEADER] for row in rows)
+        os.replace(tmp, user_csv)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
 
 
 def load_attractions(path: Path = ATTRACTIONS_CSV, user_csv: Path = USER_ATTRACTIONS_CSV) -> list[Attraction]:
@@ -68,6 +93,10 @@ def load_attractions(path: Path = ATTRACTIONS_CSV, user_csv: Path = USER_ATTRACT
     return list(unique.values())
 
 
+def load_user_attractions(user_csv: Path = USER_ATTRACTIONS_CSV) -> list[Attraction]:
+    """Only the attractions users added through the close-up form (empty if there are none yet)."""
+    return _read_attractions(user_csv)
+
 def save_user_attraction(attraction: Attraction, user_csv: Path = USER_ATTRACTIONS_CSV,
                          curated_csv: Path = ATTRACTIONS_CSV) -> bool:
     """Remember a user-added attraction. Returns False if that city already has one with this name."""
@@ -78,12 +107,46 @@ def save_user_attraction(attraction: Attraction, user_csv: Path = USER_ATTRACTIO
             return False
         user_csv.parent.mkdir(parents=True, exist_ok=True)
         needs_header = not user_csv.exists() or user_csv.stat().st_size == 0
+        if not needs_header:
+            with open(user_csv, newline="", encoding="utf-8") as f:
+                header = next(csv.reader(f), [])
+            if "opening_hours" not in header:  # a file saved before opening hours existed
+                _add_missing_columns(user_csv)
         with open(user_csv, "a", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
+            writer = csv.writer(f)  # quotes values containing "," or ";", e.g. "Mo-Fr 09:00-13:00,15:00-19:00"
             if needs_header:
-                writer.writerow(["city", "name", "category", "setting", "wind_sensitive", "lat", "lon"])
+                writer.writerow(_ATTRACTION_HEADER)
             writer.writerow([attraction.city, attraction.name, attraction.category, attraction.setting,
-                             str(attraction.wind_sensitive).lower(), attraction.lat, attraction.lon])
+                             str(attraction.wind_sensitive).lower(), attraction.lat, attraction.lon,
+                             attraction.opening_hours])
+    return True
+
+
+def delete_user_attraction(city: str, name: str, user_csv: Path = USER_ATTRACTIONS_CSV) -> bool:
+    """Forget a user-added attraction (city and name, ignoring case). Returns False if it was not there.
+
+    Only the user file is ever touched, so curated attractions cannot be deleted. The file is
+    rewritten through a temporary file and swapped in, so a crash cannot leave it half-written.
+    """
+    user_csv = Path(user_csv)
+    key = (city, name.casefold())
+    with _SAVE_LOCK:  # same lock as saving: a delete must not interleave with a save or another delete
+        existing = _read_attractions(user_csv)
+        kept = [a for a in existing if (a.city, a.name.casefold()) != key]
+        if len(kept) == len(existing):
+            return False
+        fd, tmp_name = tempfile.mkstemp(dir=user_csv.parent, prefix=user_csv.name + ".", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(_ATTRACTION_HEADER)
+                for a in kept:
+                    writer.writerow([a.city, a.name, a.category, a.setting,
+                                     str(a.wind_sensitive).lower(), a.lat, a.lon, a.opening_hours])
+            os.replace(tmp_name, user_csv)
+        except BaseException:
+            Path(tmp_name).unlink(missing_ok=True)
+            raise
     return True
 
 

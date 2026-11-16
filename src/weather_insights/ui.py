@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 import streamlit as st
 
@@ -107,11 +109,12 @@ def _search_poi(name: str, city: Location) -> None:
 
 
 def _save_poi(city: Location, name: str, category: str, setting: str, wind_sensitive: bool,
-              match, coordinates: str) -> None:
+              match, coordinates: str, hours: str = "") -> None:
     """Form action: save the confirmed (or hand-located) place, with a distinct message per outcome."""
     try:
         lat, lon = (match.lat, match.lon) if match else parse_coordinates(coordinates)
-        attraction, is_new = pipeline.add_attraction(city, name, category, setting, wind_sensitive, lat, lon)
+        attraction, is_new = pipeline.add_attraction(city, name, category, setting, wind_sensitive, lat, lon,
+                                                     opening_hours=hours)
     except InvalidInputError as exc:
         st.session_state["poi_flash"] = ("warning", str(exc))
     except OSError:
@@ -149,6 +152,14 @@ def _poi_confirm_form(city: Location, search: dict) -> None:
                                     "Mixed: indoor parts stay available, so only severe weather is a problem.")
         wind_sensitive = c3.checkbox("Wind sensitive", key=f"poi_wind_{sid}",
                                      help="Cable cars, boats, observation decks... usually close in high wind.")
+        hours = st.text_input(
+            "Opening hours (optional)",
+            value=match.opening_hours if match else "",
+            max_chars=200,
+            key=f"poi_hours_{sid}_{choice_id}",
+            help="OpenStreetMap format, e.g. Mo-Fr 09:00-17:00; Sa 10:00-14:00. "
+                 "Prefilled from OpenStreetMap when known; leave blank if unsure.",
+        )
         coordinates = ""
         if match is None:
             coordinates = st.text_input(
@@ -156,7 +167,7 @@ def _poi_confirm_form(city: Location, search: dict) -> None:
                 help="In Google Maps, right-click the place and click the two numbers at the top of the menu "
                      "to copy them, then paste here.")
         if st.form_submit_button("Save attraction"):
-            _save_poi(city, name, category, setting, wind_sensitive, match, coordinates)
+            _save_poi(city, name, category, setting, wind_sensitive, match, coordinates, hours)
 
 
 def _add_attraction_panel(city: Location) -> None:
@@ -272,8 +283,82 @@ def _world_tab(cities: list[Location]) -> None:
 
 
 # ---- tab 2: city close-up ------------------------------------------------------------------------------
-def _attraction_card(a, container) -> None:
-    """One attraction as a bordered card: big verdict, then the reasons."""
+def _remove_poi(attraction) -> None:
+    """Confirm-step action: delete a user-added attraction, with a distinct message per outcome."""
+    try:
+        removed = pipeline.remove_attraction(attraction.city, attraction.name)
+    except OSError:
+        flash = ("error", "Could not update the attractions file. Check the data folder.")
+    else:
+        flash = (("success", f"Removed {attraction.name} from {attraction.city}.") if removed
+                 else ("info", f"{attraction.name} was already removed."))  # e.g. removed from another tab
+    st.session_state["poi_remove_flash"] = flash
+    st.session_state.pop("poi_remove_pending", None)
+    st.rerun()
+
+
+def _remove_control(attraction) -> None:
+    """Remove button for a user-added card; one click only asks, a second one deletes."""
+    who = f"{attraction.city}_{attraction.name}"
+    if st.session_state.get("poi_remove_pending") == (attraction.city, attraction.name):
+        st.warning(f"Remove {attraction.name} from {attraction.city}? This cannot be undone.")
+        yes, no = st.columns(2)
+        if yes.button("Yes, remove", key=f"poi_remove_yes_{who}", type="primary"):
+            _remove_poi(attraction)
+        if no.button("Cancel", key=f"poi_remove_no_{who}"):
+            st.session_state.pop("poi_remove_pending", None)
+            st.rerun()
+    elif st.button("🗑️ Remove", key=f"poi_remove_{who}"):
+        st.session_state["poi_remove_pending"] = (attraction.city, attraction.name)
+        st.rerun()
+
+
+def _removal_message(city: Location) -> None:
+    """Show the result of the last removal once, and drop a confirmation left open in another city."""
+    pending = st.session_state.get("poi_remove_pending")
+    if pending and pending[0] != city.city:
+        st.session_state.pop("poi_remove_pending")
+    message = st.session_state.pop("poi_remove_flash", None)
+    if message:
+        getattr(st, message[0])(message[1])
+
+
+# Characters markdown gives a meaning to (links, colours, code, bold, maths...). A backslash before each one
+# makes Streamlit show it as itself.
+_MARKDOWN_SPECIAL = re.compile(r"([\\`*_\[\](){}<>#+!|~$:./-])")
+
+
+def _plain(text: str) -> str:
+    """Text typed by users or taken from OpenStreetMap, made safe to pass to st.caption / st.markdown."""
+    return _MARKDOWN_SPECIAL.sub(r"\\\1", text)
+
+
+def _hours_section(hours, local_time) -> None:
+    """Folded "Opening hours" section of a card: open/closed in the title, a two-column table inside.
+
+    Nothing at all when no hours are known. Every cell goes through _plain: hours can be typed by any user,
+    so they must never become links or styling.
+    """
+    heading = hours.heading(local_time)
+    if heading is None:
+        return
+    weekly = hours.is_understood
+    today = local_time.weekday()
+    lines = ["| Day | Hours |" if weekly else "| When | Hours |", "|---|---|"]
+    for i, (when, text) in enumerate(hours.table()):
+        when, text = _plain(when) or " ", _plain(text)
+        if weekly and i == today:
+            when, text = f"**{when}**", f"**{text}**"
+        lines.append(f"| {when} | {text} |")
+    with st.expander(heading):
+        st.markdown("\n".join(lines))
+
+
+def _attraction_card(a, container, removable: bool = False) -> None:
+    """One attraction as a bordered card: big verdict, then the reasons.
+
+    ``removable`` is True for places a user added (curated ones cannot be removed from the app).
+    """
     colour = VERDICT_MD_COLOR[a.verdict.value]
     with container.container(border=True):
         st.markdown(f"### {a.verdict.emoji} {a.attraction.name}")
@@ -281,6 +366,10 @@ def _attraction_card(a, container) -> None:
         for reason in a.reasons:
             st.markdown(f"- {reason}")
         st.caption(f"{a.snapshot.temp:.0f} °C · wind {a.snapshot.wind_speed:.1f} m/s · {a.snapshot.description}")
+        _hours_section(a.attraction.hours, a.snapshot.local_time)  # the city's clock: no extra API call
+        st.link_button("📍 Open in Google Maps", a.attraction.maps_url)
+        if removable:
+            _remove_control(a.attraction)
 
 
 def _closeup_tab(cities: list[Location], attractions, assumptions: Assumptions) -> None:
@@ -328,16 +417,27 @@ def _closeup_tab(cities: list[Location], attractions, assumptions: Assumptions) 
     assessments = pipeline.assess_closeup(city_attractions, batch, assumptions)
     attr_df = transform.assessments_to_frame(assessments)
 
+    st.subheader("Filter attractions")
+    shown = st.multiselect("Show", ["good", "caution", "avoid"], default=["good", "caution", "avoid"],
+                           format_func=lambda k: Verdict(k).label, key="closeup_filter")
+    settings = st.multiselect("Setting", ["indoor", "outdoor", "mixed"],
+                              default=["indoor", "outdoor", "mixed"],
+                              format_func=str.title, key="closeup_setting_filter")
+    st.caption("Filters apply to attraction cards and map pins. Verdict totals cover all attractions in this city.")
+    visible = transform.filter_assessments(assessments, shown, settings)
+    visible_df = transform.assessments_to_frame(visible)
+
     field = (transform.smooth_closeup_field(grid_df, city, grid_size, float(radius), layer)
              if style == "Smooth" else None)
     st.plotly_chart(
-        charts.closeup_map(grid_df, attr_df, (city.lat, city.lon), layer, float(radius), grid_size, field, fit),
+        charts.closeup_map(grid_df, visible_df, (city.lat, city.lon), layer, float(radius), grid_size, field, fit),
         width="stretch",
     )
     _show_errors(batch.errors)
 
     st.subheader(f"What can you visit in {city.city} right now?")
     _add_attraction_panel(city)
+    _removal_message(city)
     if not assessments:
         st.info(f"No attractions are listed for {city.city} yet. Add one with the form above.")
         return
@@ -351,13 +451,13 @@ def _closeup_tab(cities: list[Location], attractions, assumptions: Assumptions) 
                f"wind up to {assumptions.max_wind:.1f} m/s, rain up to {assumptions.max_rain:.1f} mm/h "
                "(change them in the sidebar).")
 
-    shown = st.multiselect("Show", ["good", "caution", "avoid"], default=["good", "caution", "avoid"],
-                           format_func=lambda k: Verdict(k).label, key="closeup_filter")
-    visible = sorted((a for a in assessments if a.verdict.value in shown),
-                     key=lambda a: (a.verdict.severity, a.attraction.name))
+    if not visible:
+        st.info("No attractions match these filters. Select more settings or weather verdicts.")
     card_cols = st.columns(2)
+    user_added = {(u.city, u.name.casefold()) for u in load.load_user_attractions()}
     for i, a in enumerate(visible):
-        _attraction_card(a, card_cols[i % 2])
+        removable = (a.attraction.city, a.attraction.name.casefold()) in user_added
+        _attraction_card(a, card_cols[i % 2], removable)
 
     st.subheader("When is the best day to go?")
     chosen = st.selectbox("Attraction", city_attractions, format_func=lambda a: a.name, key="outlook_attraction")
