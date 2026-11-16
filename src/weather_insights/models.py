@@ -360,6 +360,14 @@ def _clock(minute: int) -> str:
     return f"{minute // 60:02d}:{minute % 60:02d}"
 
 
+def _range_text(start: int, end: int) -> str:
+    """One range for the table: "09:00–17:00", "Open 24 hours", or "22:00–03:00 (next day)" past midnight."""
+    if (start, end) == (0, MINUTES_PER_DAY):
+        return "Open 24 hours"
+    text = f"{_clock(start)}–{_clock(end)}"
+    return f"{text} (next day)" if 0 < end <= start else text  # ending at 00:00 is still the same day
+
+
 def _tidy_when(when: str) -> str:
     """Readable "when" part: "Mo-Su" -> "Mon–Sun", "Jul 25,Oct 12" -> "Jul 25, Oct 12", "PH" -> "Public holidays"."""
     when = re.sub(r"\b(Mo|Tu|We|Th|Fr|Sa|Su)\b", lambda m: WEEKDAY_NAMES[_DAY_CODES.index(m[1])], when)
@@ -423,9 +431,7 @@ class OpeningHours:
         """
         week = _parse_week(self._text) if self else None
         if week is not None:
-            return [(WEEKDAY_NAMES[day], ", ".join(
-                        "Open 24 hours" if (start, end) == (0, MINUTES_PER_DAY) else f"{_clock(start)}–{_clock(end)}"
-                        for start, end in week[day]) or "Closed")
+            return [(WEEKDAY_NAMES[day], ", ".join(_range_text(start, end) for start, end in week[day]) or "Closed")
                     for day in range(7)]
         rows = []
         for piece in self._text.split(";"):

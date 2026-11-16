@@ -201,8 +201,8 @@ def test_the_weekday_table_applies_overrides_breaks_overnight_and_closed_days():
     rows = dict(hours("Mo-Fr 09:00-13:00,15:00-19:00; Fr-Sa 22:00-03:00; Su off").table())
     assert list(rows) == list(WEEK)
     assert rows["Mon"] == "09:00–13:00, 15:00–19:00"  # lunch break
-    assert rows["Fri"] == "22:00–03:00"  # the later rule replaces Friday's daytime hours
-    assert rows["Sat"] == "22:00–03:00"  # shown as written, not split at midnight
+    assert rows["Fri"] == "22:00–03:00 (next day)"  # the later rule replaces Friday's daytime hours
+    assert rows["Sat"] == "22:00–03:00 (next day)"  # one row, labelled, not split at midnight
     assert rows["Sun"] == "Closed"
 
 
@@ -213,6 +213,11 @@ def test_one_digit_hours_and_spaces_around_the_dash_are_understood(raw):
     assert h.is_open(at("Wed", 9)) is True and h.is_open(at("Wed", 8, 59)) is False
     assert h.is_open(at("Wed", 20, 15)) is False
     assert h.table() == [(day, "09:00–20:15") for day in WEEK]
+
+
+def test_ranges_ending_at_midnight_are_not_marked_next_day():
+    rows = dict(hours("Mo-Th 10:00-24:00; Fr 10:00-00:00").table())
+    assert rows["Mon"] == "10:00–24:00" and rows["Fri"] == "10:00–00:00"
 
 
 def test_24_7_reads_as_open_all_day():
