@@ -19,13 +19,22 @@ def panel_app():
     ui._add_attraction_panel(st.session_state.get("city", MADRID))
 
 
+class Recorded(list):
+    """The saved calls (compared as a plain list), plus ``hours``: the opening_hours passed with each one."""
+
+    def __init__(self):
+        super().__init__()
+        self.hours = []
+
+
 @pytest.fixture
 def saved(monkeypatch):
     """Replaces pipeline.add_attraction with a recorder, so no file is written."""
-    calls = []
+    calls = Recorded()
 
-    def fake_add(city, name, category, setting, wind_sensitive, lat, lon, **_):
+    def fake_add(city, name, category, setting, wind_sensitive, lat, lon, **kwargs):
         calls.append((name, category, setting, wind_sensitive, lat, lon))
+        calls.hours.append(kwargs.get("opening_hours"))
         return Attraction(city.city, name, category, setting, wind_sensitive, lat, lon), True
 
     monkeypatch.setattr(pipeline, "add_attraction", fake_add)
@@ -338,3 +347,27 @@ def test_switching_city_drops_a_pending_confirmation(removed):
     at.session_state["city"] = Location("Madrid", "ES", 40.4168, -3.7038)
     at.run()
     assert labels(at) == ["🗑️ Remove"]  # coming back does not resurrect the question
+
+
+# ---- opening hours (issue #4) ----
+def test_opening_hours_from_openstreetmap_are_prefilled_and_saved(monkeypatch, saved):
+    match_with_hours = POICandidate("Museo Sorolla, Madrid", 40.4356, -3.6925, "tourism", "museum", 2.6,
+                                    opening_hours="Tu-Su 10:00-20:00")
+    at = search(monkeypatch, [match_with_hours], name="Museo Sorolla")
+    field = at.text_input(key="poi_hours_1_0")
+    assert field.label == "Opening hours (optional)" and field.value == "Tu-Su 10:00-20:00"
+    at.button[1].click().run()
+    assert saved == [("Museo Sorolla", "Museum", "outdoor", False, 40.4356, -3.6925)]
+    assert saved.hours == ["Tu-Su 10:00-20:00"]
+
+
+@pytest.mark.parametrize("raw, shown", [
+    ("[Free entry](http://evil.example)", r"\[Free entry\]\(http\:\/\/evil\.example\)"),  # no link
+    (":red[CLOSED]", r"\:red\[CLOSED\]"),  # no colour
+    ("`Mo` *Tu* _We_ $x$", r"\`Mo\` \*Tu\* \_We\_ \$x\$"),  # no code, bold, italics or maths
+    ("Mo-Fr 09:00-17:00; Sa[1] 10:00-14:00", r"Mo\-Fr 09\:00\-17\:00; Sa\[1\] 10\:00\-14\:00"),
+])
+def test_hours_on_a_card_are_shown_as_plain_text(raw, shown):
+    # The card line goes through st.caption, which renders markdown; typed hours must not become links.
+    from weather_insights import ui
+    assert ui._plain(raw) == shown

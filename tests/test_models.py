@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import pytest
 
 from conftest import MADRID, owm_payload
@@ -87,3 +89,107 @@ def test_poi_candidate_suggests_a_readable_category():
 def test_poi_candidate_str_shows_distance_from_centre():
     assert str(candidate(km=1.4)) == "Templo de Debod, Madrid (1.4 km from the city centre)"
     assert "2 km" in str(candidate(km=2.0))
+
+
+# ---- opening hours (issue #4) ----
+# The week of 16-22 Nov 2026, Monday to Sunday. UTC-tagged like WeatherSnapshot.local_time.
+DAY = {"Mon": 16, "Tue": 17, "Wed": 18, "Thu": 19, "Fri": 20, "Sat": 21, "Sun": 22}
+
+
+def at(day, hh, mm=0):
+    return datetime(2026, 11, DAY[day], hh, mm, tzinfo=timezone.utc)
+
+
+def hours(raw):
+    from weather_insights.models import OpeningHours
+    return OpeningHours(raw)
+
+
+def test_the_test_week_starts_on_a_monday():
+    assert at("Wed", 12).weekday() == 2  # 18 Nov 2026 is a Wednesday
+    assert [at(d, 12).weekday() for d in DAY] == list(range(7))
+
+
+@pytest.mark.parametrize("when, expected", [
+    (at("Wed", 10), True),
+    (at("Wed", 18), False),
+    (at("Sat", 10), False),
+    (at("Fri", 17), False),  # the end is exclusive: closed at 17:00
+    (at("Mon", 9), True),  # the start is inclusive
+])
+def test_weekday_office_hours(when, expected):
+    assert hours("Mo-Fr 09:00-17:00").is_open(when) is expected
+
+
+def test_24_7_is_always_open():
+    h = hours("24/7")
+    assert all(h.is_open(at(d, hh)) is True for d in DAY for hh in (0, 12, 23))
+
+
+def test_a_closed_day():
+    h = hours("Tu-Su 10:00-20:00; Mo off")
+    assert h.is_open(at("Mon", 12)) is False
+    assert h.is_open(at("Tue", 12)) is True
+
+
+def test_a_lunch_break():
+    h = hours("Mo-Sa 10:00-14:00,16:00-20:00")
+    assert h.is_open(at("Mon", 15)) is False
+    assert h.is_open(at("Mon", 16, 30)) is True
+
+
+def test_a_later_rule_replaces_an_earlier_one_for_its_days():
+    h = hours("Mo-Su 09:00-18:00; Su 10:00-14:00")
+    assert h.is_open(at("Sun", 16)) is False
+    assert h.is_open(at("Sat", 16)) is True
+
+
+def test_overnight_hours_run_into_the_next_day():
+    h = hours("Fr-Sa 22:00-03:00")
+    assert h.is_open(at("Fri", 23)) is True
+    assert h.is_open(at("Sat", 1)) is True  # Friday night's range
+    assert h.is_open(at("Sun", 2)) is True  # Saturday night's range
+    assert h.is_open(at("Fri", 4)) is False  # Thursday has no hours
+
+
+def test_day_ranges_can_wrap_around_the_week():
+    h = hours("Fr-Mo 10:00-12:00")  # Fr, Sa, Su, Mo
+    assert h.is_open(at("Sun", 11)) is True
+    assert h.is_open(at("Wed", 11)) is False
+
+
+@pytest.mark.parametrize("raw", [
+    "Mo-Fr 09:00-17:00; PH off",
+    "sunrise-sunset",
+    "Apr-Oct: Mo-Su 10:00-18:00",
+    '"by appointment"',
+    "Mo-Fr 25:00-26:00",
+    "Mo-Fr 09:60-10:00",
+    "Xx 10:00-12:00",
+])
+def test_hours_we_cannot_evaluate_show_the_text_and_never_raise(raw):
+    h = hours(raw)
+    assert h.is_understood is False
+    assert h.is_open(at("Wed", 12)) is None
+    assert raw in h.summary(at("Wed", 12))
+
+
+def test_summary_says_open_or_closed_with_the_hours():
+    h = hours("Mo-Fr 09:00-17:00")
+    assert h.summary(at("Wed", 10)) == "🕘 Open now · Mo-Fr 09:00-17:00"
+    assert h.summary(at("Sat", 10)) == "🔒 Closed now · Mo-Fr 09:00-17:00"
+    assert hours("sunrise-sunset").summary(at("Wed", 10)) == "🕘 Hours: sunrise-sunset (check before going)"
+
+
+def test_blank_hours_mean_nothing_to_show():
+    h = hours("")
+    assert bool(h) is False and bool(hours("24/7")) is True
+    assert h.summary(at("Wed", 12)) is None and h.is_open(at("Wed", 12)) is None
+    assert str(h) == "Hours not listed" and str(hours("24/7")) == "24/7"
+
+
+def test_attraction_hours_are_optional():
+    old_style = Attraction("Madrid", "Retiro", "Park", "outdoor", False, 40.4, -3.7)  # 7 positional args
+    assert old_style.opening_hours == "" and not old_style.hours
+    always = Attraction("Madrid", "Prado", "Museum", "indoor", False, 40.4, -3.7, opening_hours="24/7")
+    assert always.hours.is_open(at("Sun", 3)) is True
