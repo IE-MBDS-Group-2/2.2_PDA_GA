@@ -45,7 +45,8 @@ def save_user_city(location: Location, user_csv: Path = USER_CITIES_CSV) -> bool
 
 
 _SAVE_LOCK = threading.Lock()
-_ATTRACTION_HEADER = ["city", "name", "category", "setting", "wind_sensitive", "lat", "lon"]
+# Columns of the user attractions file. opening_hours is optional and last: older files without it still load.
+_ATTRACTION_HEADER = ("city", "name", "category", "setting", "wind_sensitive", "lat", "lon", "opening_hours")
 
 
 def _read_attractions(path: Path) -> list[Attraction]:
@@ -57,9 +58,30 @@ def _read_attractions(path: Path) -> list[Attraction]:
     # which would break a place called "None". Numbers are converted explicitly below.
     df = pd.read_csv(path, dtype=str, keep_default_na=False)
     return [
-        Attraction(r.city, r.name, r.category, r.setting, str(r.wind_sensitive).lower() == "true", float(r.lat), float(r.lon))
+        Attraction(r.city, r.name, r.category, r.setting, str(r.wind_sensitive).lower() == "true", float(r.lat), float(r.lon),
+                   opening_hours=getattr(r, "opening_hours", ""))  # files from before the column get ""
         for r in df.itertuples()
     ]
+
+
+def _add_missing_columns(user_csv: Path) -> None:
+    """Rewrite an older user file with the current header ("" for new columns). Call with _SAVE_LOCK held.
+
+    Appending an 8-field row under a 7-field header would make the next read fail, so the file is upgraded
+    first. It is written to a temporary file and swapped in, so a crash cannot leave it half-written.
+    """
+    with open(user_csv, newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    fd, tmp = tempfile.mkstemp(dir=user_csv.parent, prefix=user_csv.name, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(_ATTRACTION_HEADER)
+            writer.writerows([row.get(column) or "" for column in _ATTRACTION_HEADER] for row in rows)
+        os.replace(tmp, user_csv)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
 
 
 def load_attractions(path: Path = ATTRACTIONS_CSV, user_csv: Path = USER_ATTRACTIONS_CSV) -> list[Attraction]:
@@ -85,12 +107,18 @@ def save_user_attraction(attraction: Attraction, user_csv: Path = USER_ATTRACTIO
             return False
         user_csv.parent.mkdir(parents=True, exist_ok=True)
         needs_header = not user_csv.exists() or user_csv.stat().st_size == 0
+        if not needs_header:
+            with open(user_csv, newline="", encoding="utf-8") as f:
+                header = next(csv.reader(f), [])
+            if "opening_hours" not in header:  # a file saved before opening hours existed
+                _add_missing_columns(user_csv)
         with open(user_csv, "a", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
+            writer = csv.writer(f)  # quotes values containing "," or ";", e.g. "Mo-Fr 09:00-13:00,15:00-19:00"
             if needs_header:
                 writer.writerow(_ATTRACTION_HEADER)
             writer.writerow([attraction.city, attraction.name, attraction.category, attraction.setting,
-                             str(attraction.wind_sensitive).lower(), attraction.lat, attraction.lon])
+                             str(attraction.wind_sensitive).lower(), attraction.lat, attraction.lon,
+                             attraction.opening_hours])
     return True
 
 
@@ -114,7 +142,7 @@ def delete_user_attraction(city: str, name: str, user_csv: Path = USER_ATTRACTIO
                 writer.writerow(_ATTRACTION_HEADER)
                 for a in kept:
                     writer.writerow([a.city, a.name, a.category, a.setting,
-                                     str(a.wind_sensitive).lower(), a.lat, a.lon])
+                                     str(a.wind_sensitive).lower(), a.lat, a.lon, a.opening_hours])
             os.replace(tmp_name, user_csv)
         except BaseException:
             Path(tmp_name).unlink(missing_ok=True)

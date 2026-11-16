@@ -19,13 +19,22 @@ def panel_app():
     ui._add_attraction_panel(st.session_state.get("city", MADRID))
 
 
+class Recorded(list):
+    """The saved calls (compared as a plain list), plus ``hours``: the opening_hours passed with each one."""
+
+    def __init__(self):
+        super().__init__()
+        self.hours = []
+
+
 @pytest.fixture
 def saved(monkeypatch):
     """Replaces pipeline.add_attraction with a recorder, so no file is written."""
-    calls = []
+    calls = Recorded()
 
-    def fake_add(city, name, category, setting, wind_sensitive, lat, lon, **_):
+    def fake_add(city, name, category, setting, wind_sensitive, lat, lon, **kwargs):
         calls.append((name, category, setting, wind_sensitive, lat, lon))
+        calls.hours.append(kwargs.get("opening_hours"))
         return Attraction(city.city, name, category, setting, wind_sensitive, lat, lon), True
 
     monkeypatch.setattr(pipeline, "add_attraction", fake_add)
@@ -338,3 +347,68 @@ def test_switching_city_drops_a_pending_confirmation(removed):
     at.session_state["city"] = Location("Madrid", "ES", 40.4168, -3.7038)
     at.run()
     assert labels(at) == ["🗑️ Remove"]  # coming back does not resurrect the question
+
+
+# ---- opening hours (issue #4) ----
+def test_opening_hours_from_openstreetmap_are_prefilled_and_saved(monkeypatch, saved):
+    match_with_hours = POICandidate("Museo Sorolla, Madrid", 40.4356, -3.6925, "tourism", "museum", 2.6,
+                                    opening_hours="Tu-Su 10:00-20:00")
+    at = search(monkeypatch, [match_with_hours], name="Museo Sorolla")
+    field = at.text_input(key="poi_hours_1_0")
+    assert field.label == "Opening hours (optional)" and field.value == "Tu-Su 10:00-20:00"
+    at.button[1].click().run()
+    assert saved == [("Museo Sorolla", "Museum", "outdoor", False, 40.4356, -3.6925)]
+    assert saved.hours == ["Tu-Su 10:00-20:00"]
+
+
+@pytest.mark.parametrize("raw, shown", [
+    ("[Free entry](http://evil.example)", r"\[Free entry\]\(http\:\/\/evil\.example\)"),  # no link
+    (":red[CLOSED]", r"\:red\[CLOSED\]"),  # no colour
+    ("`Mo` *Tu* _We_ $x$", r"\`Mo\` \*Tu\* \_We\_ \$x\$"),  # no code, bold, italics or maths
+    ("Mo-Fr 09:00-17:00; Sa[1] 10:00-14:00", r"Mo\-Fr 09\:00\-17\:00; Sa\[1\] 10\:00\-14\:00"),
+])
+def test_hours_on_a_card_are_shown_as_plain_text(raw, shown):
+    # The card line goes through st.caption, which renders markdown; typed hours must not become links.
+    from weather_insights import ui
+    assert ui._plain(raw) == shown
+
+
+def hours_card_app():
+    """One card whose opening hours come from st.session_state['hours']. Local time: Thursday 09:53."""
+    import streamlit as st
+    from conftest import MADRID, owm_payload
+    from weather_insights import transform, ui
+    from weather_insights.models import Attraction, WeatherSnapshot
+
+    snapshot = WeatherSnapshot.from_api(owm_payload(), MADRID)
+    museum = Attraction("Madrid", "Prado Museum", "Museum", "indoor", False, 40.4138, -3.6921,
+                        opening_hours=st.session_state.get("hours", ""))
+    ui._attraction_card(transform.assess_attraction(museum, snapshot), st.container())
+
+
+def hours_card(raw):
+    at = AppTest.from_function(hours_card_app)
+    at.session_state["hours"] = raw
+    return at.run()
+
+
+def test_the_card_folds_simple_hours_into_a_weekday_table_with_today_in_bold():
+    at = hours_card("Mo-Fr 09:00-17:00")
+    assert not at.exception
+    assert [e.label for e in at.expander] == ["🕘 Open now · Opening hours"]  # Thursday 09:53
+    table = at.expander[0].markdown[0].value
+    assert table.startswith("| Day | Hours |")
+    assert "| **Thu** | **09\\:00–17\\:00** |" in table and "| Sat | Closed |" in table
+
+
+def test_the_card_lists_complex_hours_rule_by_rule():
+    at = hours_card("Mo-Su 10:30-17:30; Sa 10:30-19:00; Dec 25 off; Nov Th[4] off")
+    assert [e.label for e in at.expander] == ["🕘 Opening hours (check before going)"]
+    table = at.expander[0].markdown[0].value
+    assert table.startswith("| When | Hours |")
+    assert "| Nov Thu\\[4\\] | Closed |" in table  # escaped: brackets can't become a link
+
+
+def test_a_card_without_hours_has_no_hours_section():
+    at = hours_card("")
+    assert not at.exception and len(at.expander) == 0

@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 import streamlit as st
 
@@ -107,11 +109,12 @@ def _search_poi(name: str, city: Location) -> None:
 
 
 def _save_poi(city: Location, name: str, category: str, setting: str, wind_sensitive: bool,
-              match, coordinates: str) -> None:
+              match, coordinates: str, hours: str = "") -> None:
     """Form action: save the confirmed (or hand-located) place, with a distinct message per outcome."""
     try:
         lat, lon = (match.lat, match.lon) if match else parse_coordinates(coordinates)
-        attraction, is_new = pipeline.add_attraction(city, name, category, setting, wind_sensitive, lat, lon)
+        attraction, is_new = pipeline.add_attraction(city, name, category, setting, wind_sensitive, lat, lon,
+                                                     opening_hours=hours)
     except InvalidInputError as exc:
         st.session_state["poi_flash"] = ("warning", str(exc))
     except OSError:
@@ -149,6 +152,14 @@ def _poi_confirm_form(city: Location, search: dict) -> None:
                                     "Mixed: indoor parts stay available, so only severe weather is a problem.")
         wind_sensitive = c3.checkbox("Wind sensitive", key=f"poi_wind_{sid}",
                                      help="Cable cars, boats, observation decks... usually close in high wind.")
+        hours = st.text_input(
+            "Opening hours (optional)",
+            value=match.opening_hours if match else "",
+            max_chars=200,
+            key=f"poi_hours_{sid}_{choice_id}",
+            help="OpenStreetMap format, e.g. Mo-Fr 09:00-17:00; Sa 10:00-14:00. "
+                 "Prefilled from OpenStreetMap when known; leave blank if unsure.",
+        )
         coordinates = ""
         if match is None:
             coordinates = st.text_input(
@@ -156,7 +167,7 @@ def _poi_confirm_form(city: Location, search: dict) -> None:
                 help="In Google Maps, right-click the place and click the two numbers at the top of the menu "
                      "to copy them, then paste here.")
         if st.form_submit_button("Save attraction"):
-            _save_poi(city, name, category, setting, wind_sensitive, match, coordinates)
+            _save_poi(city, name, category, setting, wind_sensitive, match, coordinates, hours)
 
 
 def _add_attraction_panel(city: Location) -> None:
@@ -312,6 +323,37 @@ def _removal_message(city: Location) -> None:
         getattr(st, message[0])(message[1])
 
 
+# Characters markdown gives a meaning to (links, colours, code, bold, maths...). A backslash before each one
+# makes Streamlit show it as itself.
+_MARKDOWN_SPECIAL = re.compile(r"([\\`*_\[\](){}<>#+!|~$:./-])")
+
+
+def _plain(text: str) -> str:
+    """Text typed by users or taken from OpenStreetMap, made safe to pass to st.caption / st.markdown."""
+    return _MARKDOWN_SPECIAL.sub(r"\\\1", text)
+
+
+def _hours_section(hours, local_time) -> None:
+    """Folded "Opening hours" section of a card: open/closed in the title, a two-column table inside.
+
+    Nothing at all when no hours are known. Every cell goes through _plain: hours can be typed by any user,
+    so they must never become links or styling.
+    """
+    heading = hours.heading(local_time)
+    if heading is None:
+        return
+    weekly = hours.is_understood
+    today = local_time.weekday()
+    lines = ["| Day | Hours |" if weekly else "| When | Hours |", "|---|---|"]
+    for i, (when, text) in enumerate(hours.table()):
+        when, text = _plain(when) or " ", _plain(text)
+        if weekly and i == today:
+            when, text = f"**{when}**", f"**{text}**"
+        lines.append(f"| {when} | {text} |")
+    with st.expander(heading):
+        st.markdown("\n".join(lines))
+
+
 def _attraction_card(a, container, removable: bool = False) -> None:
     """One attraction as a bordered card: big verdict, then the reasons.
 
@@ -324,6 +366,7 @@ def _attraction_card(a, container, removable: bool = False) -> None:
         for reason in a.reasons:
             st.markdown(f"- {reason}")
         st.caption(f"{a.snapshot.temp:.0f} °C · wind {a.snapshot.wind_speed:.1f} m/s · {a.snapshot.description}")
+        _hours_section(a.attraction.hours, a.snapshot.local_time)  # the city's clock: no extra API call
         st.link_button("📍 Open in Google Maps", a.attraction.maps_url)
         if removable:
             _remove_control(a.attraction)

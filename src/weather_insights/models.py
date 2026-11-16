@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -271,6 +272,186 @@ class Assumptions:
         }.get(metric)
 
 
+# ---- opening hours (OpenStreetMap "opening_hours" syntax, simple patterns only) ----------------------
+# Regular expressions as in the s07 datetimes/regex session; re.fullmatch must match a whole rule.
+_DAY_CODES = ("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")
+_DAY = r"(?:Mo|Tu|We|Th|Fr|Sa|Su)"
+_DAY_LIST = rf"{_DAY}(?:-{_DAY})?(?:\s*,\s*{_DAY}(?:-{_DAY})?)*"  # "Mo-Fr", "Mo,We", "Fr-Mo"
+_CLOCK = r"(?:[01]?\d|2[0-4]):[0-5]\d"  # 0:00 or 00:00 to 24:59; 24:xx beyond 24:00 is refused below
+_TIME_LIST = rf"{_CLOCK}\s*-\s*{_CLOCK}(?:\s*,\s*{_CLOCK}\s*-\s*{_CLOCK})*"  # "09:00-13:00,15:00-19:00", "9:00 - 20:15"
+_RULE = re.compile(rf"(?:(?P<days>{_DAY_LIST})\s+)?(?:(?P<times>{_TIME_LIST})|(?P<off>off|closed))")
+_TIME_RANGE = re.compile(r"(\d{1,2}):(\d\d)\s*-\s*(\d{1,2}):(\d\d)")
+MINUTES_PER_DAY = 24 * 60
+
+
+def _expand_days(days: str) -> list[int]:
+    """Weekday numbers for a day list: "Mo-We,Fr" -> [0, 1, 2, 4]. Ranges may wrap: "Fr-Mo" -> [4, 5, 6, 0]."""
+    result = []
+    for part in days.split(","):
+        first, _, last = part.strip().partition("-")
+        start = _DAY_CODES.index(first)
+        end = _DAY_CODES.index(last) if last else start
+        result.extend((start + k) % 7 for k in range((end - start) % 7 + 1))
+    return result
+
+
+def _parse_week(raw: str) -> dict[int, list[tuple[int, int]]] | None:
+    """Each weekday's ranges as written (an overnight range keeps end <= start), or None if not understood.
+
+    Understands "24/7" and rules such as "Mo-Fr 09:00-17:00; Sa 10:00-14:00; Su off", several ranges per
+    day and overnight ranges ("22:00-03:00"). A later rule replaces earlier ones for the days it names,
+    as in OpenStreetMap. Anything else (public holidays, months, sunrise...) gives None. Never raises.
+    """
+    text = str(raw or "").strip()
+    if text == "24/7":
+        return {day: [(0, MINUTES_PER_DAY)] for day in range(7)}
+    week: dict[int, list[tuple[int, int]]] = {day: [] for day in range(7)}
+    found_a_rule = False
+    for piece in text.split(";"):
+        piece = piece.strip()
+        if not piece:
+            continue
+        match = _RULE.fullmatch(piece)
+        if match is None:
+            return None
+        if match["off"] and not match["days"]:
+            return None  # a bare "off" would close every day: too unusual to trust
+        ranges = []
+        for start_h, start_m, end_h, end_m in _TIME_RANGE.findall(match["times"] or ""):
+            if (start_h == "24" and start_m != "00") or (end_h == "24" and end_m != "00"):
+                return None
+            ranges.append((int(start_h) * 60 + int(start_m), int(end_h) * 60 + int(end_m)))
+        for day in (_expand_days(match["days"]) if match["days"] else range(7)):
+            week[day] = list(ranges)  # replaces what an earlier rule said about this day
+        found_a_rule = True
+    return week if found_a_rule else None
+
+
+def _parse_opening_hours(raw: str) -> dict[int, list[tuple[int, int]]] | None:
+    """Weekday (Monday = 0) -> list of (start, end) in minutes since midnight, or None if not understood.
+
+    Like _parse_week, but an overnight range is split at midnight: start -> midnight on its own day, then
+    00:00 -> end on the next day, so "is it open at minute m of day d?" is a simple lookup.
+    """
+    week = _parse_week(raw)
+    if week is None:
+        return None
+    schedule: dict[int, list[tuple[int, int]]] = {day: [] for day in range(7)}
+    for day, ranges in week.items():
+        for start, end in ranges:
+            if end > start:
+                schedule[day].append((start, end))
+            else:
+                schedule[day].append((start, MINUTES_PER_DAY))
+                if end > 0:
+                    schedule[(day + 1) % 7].append((0, end))
+    return schedule
+
+
+# ---- opening hours as table rows (for people, not for the open-now check) ----
+WEEKDAY_NAMES = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_HOLIDAY_NAMES = {"PH": "Public holidays", "SH": "School holidays"}
+_LOOSE_TIMES = r"\d{1,2}:\d\d-\d{1,2}:\d\d(?:\s*,\s*\d{1,2}:\d\d-\d{1,2}:\d\d)*"
+# One rule split into "when" and "hours": "Nov Th[4] off", "Oct-Mar: 10:00-18:00", "09:00-12:00".
+_RULE_PARTS = re.compile(rf"(?:(?P<when>.*?)[\s:]+)?(?P<hours>{_LOOSE_TIMES}|off|closed)")
+
+
+def _clock(minute: int) -> str:
+    return f"{minute // 60:02d}:{minute % 60:02d}"
+
+
+def _range_text(start: int, end: int) -> str:
+    """One range for the table: "09:00–17:00", "Open 24 hours", or "22:00–03:00 (next day)" past midnight."""
+    if (start, end) == (0, MINUTES_PER_DAY):
+        return "Open 24 hours"
+    text = f"{_clock(start)}–{_clock(end)}"
+    return f"{text} (next day)" if 0 < end <= start else text  # ending at 00:00 is still the same day
+
+
+def _tidy_when(when: str) -> str:
+    """Readable "when" part: "Mo-Su" -> "Mon–Sun", "Jul 25,Oct 12" -> "Jul 25, Oct 12", "PH" -> "Public holidays"."""
+    when = re.sub(r"\b(Mo|Tu|We|Th|Fr|Sa|Su)\b", lambda m: WEEKDAY_NAMES[_DAY_CODES.index(m[1])], when)
+    when = re.sub(r"\b(PH|SH)\b", lambda m: _HOLIDAY_NAMES[m[1]], when)
+    return re.sub(r"\s*,\s*", ", ", when.replace("-", "–")).strip()
+
+
+def _tidy_hours(hours: str) -> str:
+    if hours in ("off", "closed"):
+        return "Closed"
+    return re.sub(r"\s*,\s*", ", ", hours.replace("-", "–"))
+
+
+@dataclass(frozen=True)
+class OpeningHours:
+    """Opening hours as written in OpenStreetMap, with an "open now?" check for simple patterns."""
+
+    raw: str = ""
+
+    @property
+    def _text(self) -> str:
+        return str(self.raw or "").strip()
+
+    @property
+    def _schedule(self) -> dict[int, list[tuple[int, int]]] | None:
+        return _parse_opening_hours(self._text)
+
+    @property
+    def is_understood(self) -> bool:
+        """True when the text is a pattern we can evaluate (otherwise it is only shown)."""
+        return self._schedule is not None
+
+    def is_open(self, at: datetime) -> bool | None:
+        """True / False for simple patterns; None when there are no hours or we cannot tell.
+
+        Only the weekday and clock time of ``at`` are used and its tzinfo is ignored on purpose:
+        WeatherSnapshot.local_time is tagged UTC but already shifted to the city's own clock.
+        The start of a range is inclusive and the end exclusive ("09:00-17:00" is closed at 17:00).
+        """
+        schedule = self._schedule if self else None
+        if schedule is None:
+            return None
+        minute = at.hour * 60 + at.minute
+        return any(start <= minute < end for start, end in schedule[at.weekday()])
+
+    def heading(self, at: datetime) -> str | None:
+        """Short title for the hours section of a card ("🔒 Closed now · Opening hours"), or None if blank."""
+        if not self:
+            return None
+        is_open = self.is_open(at)
+        if is_open is None:
+            return "🕘 Opening hours (check before going)"
+        return f"{'🕘 Open now' if is_open else '🔒 Closed now'} · Opening hours"
+
+    def table(self) -> list[tuple[str, str]]:
+        """Rows of (when, hours) that are easy to read; [] when blank.
+
+        Simple patterns give one row per weekday, Monday first, with later rules already applied.
+        Anything else gives one row per rule, as written but tidied ("Nov Th[4] off" -> "Nov Thu[4]",
+        "Closed"); a piece we cannot split is shown whole in the hours column.
+        """
+        week = _parse_week(self._text) if self else None
+        if week is not None:
+            return [(WEEKDAY_NAMES[day], ", ".join(_range_text(start, end) for start, end in week[day]) or "Closed")
+                    for day in range(7)]
+        rows = []
+        for piece in self._text.split(";"):
+            piece = piece.strip()
+            if not piece:
+                continue
+            parts = _RULE_PARTS.fullmatch(piece)
+            if parts is None:
+                rows.append(("", piece))
+            else:
+                rows.append((_tidy_when(parts["when"]) if parts["when"] else "Every day", _tidy_hours(parts["hours"])))
+        return rows
+
+    def __bool__(self) -> bool:
+        return bool(self._text)  # False means "no hours known"
+
+    def __str__(self) -> str:
+        return self._text or "Hours not listed"
+
+
 @dataclass(frozen=True)
 class Attraction:
     """A visitable place whose enjoyment (or opening) depends on the weather."""
@@ -282,6 +463,11 @@ class Attraction:
     wind_sensitive: bool  # cable cars, boats, towers... usually suspend operation in high wind
     lat: float
     lon: float
+    opening_hours: str = ""  # OpenStreetMap syntax; blank = unknown. Last, so 7-argument calls still work.
+
+    @property
+    def hours(self) -> OpeningHours:
+        return OpeningHours(self.opening_hours)
 
     @property
     def maps_url(self) -> str:
@@ -307,6 +493,7 @@ class POICandidate:
     osm_class: str  # OpenStreetMap feature class, e.g. "tourism"
     osm_type: str  # OpenStreetMap feature type, e.g. "museum"
     km_from_city: float
+    opening_hours: str = ""  # OpenStreetMap "opening_hours" tag when the place has one
 
     @property
     def suggested_category(self) -> str:
