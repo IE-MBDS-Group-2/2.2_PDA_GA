@@ -171,20 +171,13 @@ def test_hours_we_cannot_evaluate_show_the_text_and_never_raise(raw):
     h = hours(raw)
     assert h.is_understood is False
     assert h.is_open(at("Wed", 12)) is None
-    assert raw in h.summary(at("Wed", 12))
-
-
-def test_summary_says_open_or_closed_with_the_hours():
-    h = hours("Mo-Fr 09:00-17:00")
-    assert h.summary(at("Wed", 10)) == "🕘 Open now · Mo-Fr 09:00-17:00"
-    assert h.summary(at("Sat", 10)) == "🔒 Closed now · Mo-Fr 09:00-17:00"
-    assert hours("sunrise-sunset").summary(at("Wed", 10)) == "🕘 Hours: sunrise-sunset (check before going)"
+    assert h.heading(at("Wed", 12)) == "🕘 Opening hours (check before going)"
 
 
 def test_blank_hours_mean_nothing_to_show():
     h = hours("")
     assert bool(h) is False and bool(hours("24/7")) is True
-    assert h.summary(at("Wed", 12)) is None and h.is_open(at("Wed", 12)) is None
+    assert h.heading(at("Wed", 12)) is None and h.is_open(at("Wed", 12)) is None
     assert str(h) == "Hours not listed" and str(hours("24/7")) == "24/7"
 
 

@@ -405,15 +405,6 @@ class OpeningHours:
         minute = at.hour * 60 + at.minute
         return any(start <= minute < end for start, end in schedule[at.weekday()])
 
-    def summary(self, at: datetime) -> str | None:
-        """One line for an attraction card, or None when no hours are known."""
-        if not self:
-            return None
-        is_open = self.is_open(at)
-        if is_open is None:
-            return f"🕘 Hours: {self._text} (check before going)"
-        return f"{'🕘 Open now' if is_open else '🔒 Closed now'} · {self._text}"
-
     def heading(self, at: datetime) -> str | None:
         """Short title for the hours section of a card ("🔒 Closed now · Opening hours"), or None if blank."""
         if not self:
