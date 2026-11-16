@@ -206,6 +206,15 @@ def test_the_weekday_table_applies_overrides_breaks_overnight_and_closed_days():
     assert rows["Sun"] == "Closed"
 
 
+@pytest.mark.parametrize("raw", ["9:00 - 20:15", "9:00-20:15", "09:00 -20:15", "Mo-Su 9:00 - 20:15"])
+def test_one_digit_hours_and_spaces_around_the_dash_are_understood(raw):
+    h = hours(raw)  # Manila Ocean Park's OpenStreetMap value is "9:00 - 20:15"
+    assert h.is_understood is True
+    assert h.is_open(at("Wed", 9)) is True and h.is_open(at("Wed", 8, 59)) is False
+    assert h.is_open(at("Wed", 20, 15)) is False
+    assert h.table() == [(day, "09:00–20:15") for day in WEEK]
+
+
 def test_24_7_reads_as_open_all_day():
     assert hours("24/7").table() == [(day, "Open 24 hours") for day in WEEK]
 

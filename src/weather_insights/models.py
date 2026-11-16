@@ -277,10 +277,10 @@ class Assumptions:
 _DAY_CODES = ("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")
 _DAY = r"(?:Mo|Tu|We|Th|Fr|Sa|Su)"
 _DAY_LIST = rf"{_DAY}(?:-{_DAY})?(?:\s*,\s*{_DAY}(?:-{_DAY})?)*"  # "Mo-Fr", "Mo,We", "Fr-Mo"
-_CLOCK = r"(?:[01]\d|2[0-4]):[0-5]\d"  # 00:00 to 24:59; 24:xx beyond 24:00 is refused below
-_TIME_LIST = rf"{_CLOCK}-{_CLOCK}(?:\s*,\s*{_CLOCK}-{_CLOCK})*"  # "09:00-13:00,15:00-19:00"
+_CLOCK = r"(?:[01]?\d|2[0-4]):[0-5]\d"  # 0:00 or 00:00 to 24:59; 24:xx beyond 24:00 is refused below
+_TIME_LIST = rf"{_CLOCK}\s*-\s*{_CLOCK}(?:\s*,\s*{_CLOCK}\s*-\s*{_CLOCK})*"  # "09:00-13:00,15:00-19:00", "9:00 - 20:15"
 _RULE = re.compile(rf"(?:(?P<days>{_DAY_LIST})\s+)?(?:(?P<times>{_TIME_LIST})|(?P<off>off|closed))")
-_TIME_RANGE = re.compile(r"(\d\d):(\d\d)-(\d\d):(\d\d)")
+_TIME_RANGE = re.compile(r"(\d{1,2}):(\d\d)\s*-\s*(\d{1,2}):(\d\d)")
 MINUTES_PER_DAY = 24 * 60
 
 
