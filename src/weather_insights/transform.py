@@ -150,6 +150,18 @@ def history_coverage(history: pd.DataFrame) -> dict:
     }
 
 
+def filter_history_by_date(history: pd.DataFrame, start, end) -> pd.DataFrame:
+    """Rows of the log whose (UTC) calendar date lies between ``start`` and ``end``, both inclusive.
+
+    ``start`` / ``end`` are ``datetime.date`` objects (what a Streamlit date slider returns).
+    The full day of ``end`` is kept, so picking the same day twice shows that whole day.
+    """
+    if history.empty:
+        return history.copy()
+    dates = history["timestamp"].dt.date
+    return history[(dates >= start) & (dates <= end)].reset_index(drop=True)
+
+
 # ---- geography helpers --------------------------------------------------------------------------
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     r = 6371.0088
