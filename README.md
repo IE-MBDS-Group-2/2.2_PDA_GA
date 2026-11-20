@@ -2,21 +2,32 @@
 
 A Streamlit app that answers a traveller's real question: **"What can I actually do in this city today, and when is the best day to go?"**
 
-- **🌍 World overview** – live weather for 26 cities (including the capitals of Spain, the US, Lebanon, Ecuador, the UAE, Poland and the Philippines) on a smooth, weather-app-style colour field (interpolated between the cities and fading out far from any of them; colour scales are fixed so colours mean the same thing everywhere: temperature 0–38 °C, humidity/clouds/comfort 0–100, wind 0–20 m/s, rain 0–5 mm/h with white = dry) with a dot per city, plus the hottest / coldest / windiest / most comfortable city and a sortable ranking.
-- **🔍 City close-up** – pick a city and the app samples the weather on a grid around it (you choose the grid and radius, 2–10 points and 1–100 km), paints it on the same fixed colour scales (tick *Fit colours to this city* to stretch them to local values) as a continuous colour surface interpolated between the real readings (or, optionally, as flat cells) over a street map, and pins the city's attractions (10 curated per default city, plus any you add) on top. Each attraction gets a verdict card from the weather *at its own location*: ✅ good to go, ⚠️ not ideal, ⛔ not recommended (e.g. cable cars and boat tours stop in strong wind, outdoor sights in thunderstorms), with the reasons. A 5-day forecast tells you the best day to visit a chosen attraction. Is your favourite place missing? Open **➕ Add an attraction that is missing**, type its name, confirm the match found on OpenStreetMap (or paste coordinates copied from a map), say whether it is outdoors, indoors or both, and it gets its own verdict card straight away. Added one by mistake? Cards for places you added have a **🗑️ Remove** button (it asks you to confirm first); the curated attractions cannot be removed from the app. Filter by **Setting** (Indoor, Outdoor, Mixed) and weather verdict using the controls above the map. All options start selected; cards and map pins show only attractions matching both filters. Clearing either selection shows no attractions. Verdict totals and the forecast selector still cover the whole city. Filtering reuses cached weather and does not edit saved attractions.
-- **📈 Analytics** – built from the app's own accumulating log. One tab per metric (temperature, feels-like, humidity, wind, rain/snow, cloud cover, comfort index, feels-like delta, daily range), each with a time series and a ranking bar chart covering **all cities**, and your acceptable range shaded in green where one applies.
+- **World overview** – live weather for 26 cities (including the capitals of Spain, the US, Lebanon, Ecuador, the UAE, Poland and the Philippines) on a smooth, weather-app-style colour field (interpolated between the cities and fading out far from any of them; colour scales are fixed so colours mean the same thing everywhere: temperature 0–38 °C, humidity/clouds/comfort 0–100, wind 0–20 m/s, rain 0–5 mm/h with white = dry) with a dot per city, plus the hottest / coldest / windiest / most comfortable city and a sortable ranking.
+- **City close-up** – pick a city and the app samples the weather on a grid around it (you choose the grid and radius, 2–10 points and 1–100 km), paints it on the same fixed colour scales (tick *Fit colours to this city* to stretch them to local values) as a continuous colour surface interpolated between the real readings (or, optionally, as flat cells) over a street map, and pins the city's attractions (10 curated per default city, plus any you add) on top. Each attraction gets a verdict card from the weather *at its own location*: good to go, not ideal, not recommended (e.g. cable cars and boat tours stop in strong wind, outdoor sights in thunderstorms), with the reasons. A 5-day forecast tells you the best day to visit a chosen attraction. Is your favourite place missing? Open **➕ Add an attraction that is missing**, type its name, confirm the match found on OpenStreetMap (or paste coordinates copied from a map), say whether it is outdoors, indoors or both, and it gets its own verdict card straight away. Added one by mistake? Cards for places you added have a **🗑️ Remove** button (it asks you to confirm first); the curated attractions cannot be removed from the app. Filter by **Setting** (Indoor, Outdoor, Mixed) and weather verdict using the controls above the map. All options start selected; cards and map pins show only attractions matching both filters. Clearing either selection shows no attractions. Verdict totals and the forecast selector still cover the whole city. Filtering reuses cached weather and does not edit saved attractions.
+- **Analytics** – built from the app's own accumulating log. One tab per metric (temperature, feels-like, humidity, wind, rain/snow, cloud cover, comfort index, feels-like delta, daily range), each with a time series and a ranking bar chart covering **all cities**, and your acceptable range shaded in green where one applies.
 - **Sidebar assumptions** – sliders for the acceptable temperature range, maximum wind and maximum rain. They drive the attraction verdicts and the green bands in Analytics.
 
 Weather data comes from the [OpenWeatherMap](https://openweathermap.org/api) free tier (current weather, 5-day forecast, geocoding). Places users add are located with [OpenStreetMap Nominatim](https://nominatim.org/) (no key needed; data © OpenStreetMap contributors). The free tier has no history, so every fetch is appended to `data/weather_log.csv` and the analytics grow as the log grows.
 
 ## Setup
 
-Requires [uv](https://docs.astral.sh/uv/) and Python 3.11+.
+Requires Git, [uv](https://docs.astral.sh/uv/getting-started/installation/) and Python 3.11+. Install uv using its official installation instructions, then check `uv --version` in a new terminal. If you need a compatible Python version, run `uv python install 3.11`.
+
+For a fresh copy, clone the repository and enter its folder before running the setup commands.
+
+```bash
+git clone https://github.com/IE-MBDS-Group-2/2.2_PDA_GA.git
+cd 2.2_PDA_GA
+```
+
+If you already have a clone, open a terminal in that project folder. All commands below run from the folder containing `pyproject.toml` and `main.py`.
 
 ```bash
 uv sync                                   # creates .venv and installs the package + dependencies
 cp .env.example .env                      # then paste your own OpenWeatherMap key into .env
 ```
+
+Copy `.env.example` only on first setup. Open `.env` in your editor and replace the placeholder with your own key on the `OPENWEATHER_API_KEY` line.
 
 `.env` is git-ignored. The key is read with `python-dotenv`, is never printed, and is never shown in the UI. New OpenWeatherMap keys can take up to two hours to activate.
 
@@ -31,6 +42,21 @@ uv run pytest                        # run the tests (no network needed)
 **Building the history.** Run `main.py --refresh` on a schedule (cron on macOS/Linux, Task Scheduler on Windows; hourly is plenty) so `data/weather_log.csv` accumulates real observations. Commit the log: the Analytics tab is only as interesting as the history behind it. The same city is never logged twice within 10 minutes.
 
 **Rate limits.** The free plan allows 60 calls/minute. The world tab uses one call per tracked city; the close-up uses grid² calls (25 by default, up to 100). The client paces itself to at most 50 calls per minute (`RateLimiter` in `extract.py`), so a big grid is slowed down instead of being rejected: 100 calls take about two minutes the first time. Results are cached for 10 minutes; use *Refresh live data* in the sidebar to force a fetch.
+
+## Troubleshooting
+
+| What you see | What to do |
+|---|---|
+| `uv` is not found | Install uv from the setup link above, reopen the terminal, and check `uv --version`. |
+| Python version is incompatible | The package requires Python 3.11 or newer. Run `uv python install 3.11`, then `uv sync` from the project folder. |
+| `OPENWEATHER_API_KEY is not set` | Check that `.env` is in the project root and contains your own key instead of the placeholder. Restart the app after editing it. An existing environment variable takes precedence over the file. |
+| The weather service rejected the API key | Check the key in your OpenWeatherMap account and the value configured locally. A newly created key may need time to activate. |
+| A city name is rejected or no city is found | Enter a non-empty name with letters and check the spelling. Try a city with its country code, such as `Madrid,ES`, to make the search more specific. |
+| No city could be loaded | Expand the list of locations that could not be loaded to read the individual errors. Check your connection for network errors, wait a minute for a rate-limit error, or retry later for a service error. |
+| Analytics says the weather log is empty | With a working API key, open World overview or run `uv run python main.py --refresh` to collect observations. Later successful fetches build the history in `data/weather_log.csv`. |
+| Refreshing adds no new rows | The app skips repeat observations for a city within 10 minutes. Wait before collecting again. A useful trend also needs observations from different times. |
+
+Run `uv run pytest` to check the existing automated tests. They use fake API responses and require no real API key or live weather requests.
 
 ## Project structure
 
@@ -69,7 +95,7 @@ uv run pytest                        # run the tests (no network needed)
 | **Errors** | Bad input, bad key, unknown place, rate limit, network failure and server failure each raise their own exception with a distinct user-facing message; the key never appears in them. One failing city never stops a batch. |
 | **Comfort index** | 100 − 3 per °C of *feels-like* away from 21 °C − 0.3 per humidity point above 60 % − 1.5 per m/s of wind above 5 − 5 per mm/h of precipitation (max 4); clipped to 0–100. |
 | **Assumptions** | `Assumptions` (frozen dataclass, `models.py`) holds the three sidebar settings: temperature range (applied to feels-like, default 5–32 °C), max wind (default 10.8 m/s) and max rain (default 0 mm/h). Other limits are derived from them, so they always move together. |
-| **Attraction verdicts** | Outdoor sites: ⚠️ when feels-like is outside your range, wind reaches your limit, or rain exceeds your limit (or visibility is under 1 km); ⛔ for thunderstorms, heavy rain (7.6 mm/h or twice your limit), gales (1.6 × your wind limit), or feels-like 7 °C above / 15 °C below your range. Wind-sensitive sites (cable cars, boats, towers) close earlier: ⚠️ from 0.74 × and ⛔ from 1.29 × your wind limit. Mixed sites are only downgraded by severe weather; indoor sites are always fine except observation decks in high wind. |
+| **Attraction verdicts** | Outdoor sites: caution when feels-like is outside your range, wind reaches your limit, or rain exceeds your limit (or visibility is under 1 km); avoid for thunderstorms, heavy rain (7.6 mm/h or twice your limit), gales (1.6 × your wind limit), or feels-like 7 °C above / 15 °C below your range. Wind-sensitive sites (cable cars, boats, towers) close earlier: caution from 0.74 × and avoid from 1.29 × your wind limit. Mixed sites are only downgraded by severe weather; indoor sites are always fine except observation decks in high wind. |
 | **Opening hours** | Optional `opening_hours` column (OpenStreetMap syntax, blank = unknown), filled from OpenStreetMap for the indoor and mixed sites it has hours for (69 of 131), and prefilled from it (`extratags=1`) when a user adds a place. `OpeningHours` (`models.py`) evaluates simple patterns (`24/7`, `Mo-Fr 09:00-17:00; Su off`, several ranges, overnight) against the city's local time from the weather already fetched, so cards say 🕘 Open now / 🔒 Closed now with no extra API call; clicking it unfolds a Mon–Sun table with today in bold. Anything more complex (holidays, months, sunrise) unfolds as one row per rule ("Dec 25 · Closed") under "check before going"; verdicts stay weather-only. |
 
 ## Known limitations

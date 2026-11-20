@@ -1,6 +1,6 @@
 # AI collaboration log
 
-One entry per feature, in the order the work was done. Agent: Claude (Claude Code session, model `claude-sonnet-5-5`).
+One entry per feature, in the order the work was done. Earlier entries use Claude (Claude Code session, model `claude-sonnet-5-5`). Later entries identify their agent separately.
 Entries marked **Group review** need a group member to confirm or change the "Kept / changed" line after reading the code.
 
 ## Feature: project scope and structure
@@ -45,7 +45,7 @@ Entries marked **Group review** need a group member to confirm or change the "Ke
 
 **Got:** `city_trend`, `daily_summary`, `latest_per_city`, `rank_cities`, `extremes`, `city_comparison`; `build_grid` and `nearest_snapshot` (so each attraction uses the nearest sampled weather point); `assess_attraction` with documented thresholds (Beaufort-based wind limits, 7.6 mm/h heavy rain, heat/cold limits, wind-sensitive sites such as cable cars); `visit_outlook` and `best_day` over the 5-day forecast.
 
-**Checked:** 19 parametrised verdict cases (e.g. the same 14 m/s wind is ⛔ for a boat tour and only ⚠️ for a park; thunderstorms never affect a museum), grid geometry, great-circle distance Madrid–London ≈ 1264 km, trend/daily-range/comparison values on a tiny hand-made history, forecast day verdicts on a clear day vs a thunderstorm day.
+**Checked:** 19 parametrised verdict cases (e.g. the same 14 m/s wind is avoid for a boat tour and only caution for a park; thunderstorms never affect a museum), grid geometry, great-circle distance Madrid–London ≈ 1264 km, trend/daily-range/comparison values on a tiny hand-made history, forecast day verdicts on a clear day vs a thunderstorm day.
 
 **Kept as-is / changed / rejected:** Kept. **Group review:** the thresholds are reasonable defaults taken from the Beaufort scale and WMO rain classes, not official opening rules; we should decide whether to tune them.
 
@@ -86,7 +86,7 @@ Entries marked **Group review** need a group member to confirm or change the "Ke
 - *Assumptions:* new `Assumptions` dataclass (temperature range on feels-like, max wind, max rain) with derived limits, passed through `assess_attraction`, `assess_city` and `visit_outlook`; three sidebar sliders plus a reset button.
 - *Analytics:* tables removed; one tab per metric with an all-city time series (line per city) and an all-city bar chart; the acceptable range is shaded green for temperature, feels-like, wind and rain; bars are green inside / red outside the range. Humidity, cloud cover and the derived metrics have no assumption, so they have no band (the tab says so). `city_comparison` was deleted as dead code.
 
-**Checked:** 89 tests pass (up from 78): rules re-run against the new `Assumptions` (e.g. 35 °C feels-like is ⚠️ by default but ✅ with a 36 °C limit; the same 12 m/s wind is ⚠️ at the default limit and ✅ at 14; all wind thresholds scale together; heavy rain stays ⛔ whatever the rain tolerance), validation of impossible settings, all-city time series and daily summaries on a hand-made history. A new data test checks every default capital is present, every city has 8–10 attractions, and every attraction is within 45 km of its city: it caught Cape Point. The analytics data functions were also run on our real `weather_log.csv` (21 cities) for every metric and resolution. As before, Streamlit and Plotly could not be installed in the build sandbox, so the new maps, cards and charts were only exercised against stand-in modules.
+**Checked:** 89 tests pass (up from 78): rules re-run against the new `Assumptions` (e.g. 35 °C feels-like is caution by default but good with a 36 °C limit; the same 12 m/s wind is caution at the default limit and good at 14; all wind thresholds scale together; heavy rain stays avoid whatever the rain tolerance), validation of impossible settings, all-city time series and daily summaries on a hand-made history. A new data test checks every default capital is present, every city has 8–10 attractions, and every attraction is within 45 km of its city: it caught Cape Point. The analytics data functions were also run on our real `weather_log.csv` (21 cities) for every metric and resolution. As before, Streamlit and Plotly could not be installed in the build sandbox, so the new maps, cards and charts were only exercised against stand-in modules.
 
 **Kept as-is / changed / rejected:** Kept. **Group review:** (a) the default assumptions (5–32 °C, 10.8 m/s, 0 mm/h) are Claude's choice, so decide what our group considers acceptable; (b) the 6 new cities' attractions, and the rest of the 260 rows, were again written from memory, so spot-check names and coordinates; (c) `country_codes.csv` (181 countries) was also written from memory, so a wrong code would only leave that country unshaded; the dots still show.
 
@@ -238,3 +238,21 @@ user adds a place; no extra weather API calls; old CSVs must still load. Hours m
 **Kept / changed:** folded by default so the two-column card grid stays short; the open/closed status stays visible in the title.
 
 **Follow-up (16 Nov), review fixes:** Miguel asked the agent (Claude Code) to apply the non-blocking points from the #14 review. (a) Removed `OpeningHours.summary()`, unused by the UI since the hours table; its tests now check `heading()`. (b) The parser accepts one-digit hours and spaces around the dash, so OSM values such as `9:00 - 20:15` (Manila Ocean Park) and `Mo-Sa 9:00-19:00` (Grand Bazaar) get an open/closed check and a weekday table: 57 of 69 curated hours are evaluated, up from 55, and no other row changed. (c) Ranges past midnight read "22:00–03:00 (next day)" in the table. **Checked:** new tests written first and seen failing; 299 passed.
+
+---
+
+## Feature: Farah - setup instructions and troubleshooting (2026-11-05)
+
+**Agent:** OpenAI Codex.
+
+**Asked:** Make a small contribution on Farah's branch by improving setup instructions, adding troubleshooting for missing API keys, invalid city names and empty history, and recording the assistance.
+
+**Got:** README instructions for cloning the Farah branch, selecting the project folder, checking prerequisites, configuring the key and handling common startup/data problems. Codex drafted the documentation after reading the configuration, API errors, UI and command-line entry point.
+
+**Checked:** Confirmed the Python requirement and test dependency in `pyproject.toml`, key loading and placeholder detection in `config.py`, error messages in `extract.py`, empty-history guidance in `ui.py`, and refresh behavior in `main.py`. Initial prerequisite checks found no uv executable and Python 3.10 as the default Python. Installed uv and Python 3.11 in the local Codex tools folder and installed the locked dependencies successfully. The existing test suite returned 103 passed and 3 failed. All three failures concern shipped catalogue consistency: Washington D.C. and Abu Dhabi have attractions but are absent from the loaded city catalogue. The CLI refresh and Streamlit AppTest both displayed the expected missing-key error without an unhandled exception. Live weather fetching and a full browser-based visual review remain unverified.
+
+**Kept / changed / rejected:** Kept the focused setup and troubleshooting documentation. Clarified that copying the example environment file is a first-setup step and that an existing environment variable takes precedence. Farah's personal review of the wording remains pending. The catalogue failures are recorded for the group's follow-up.
+
+**Follow-up request:** Remove em dashes and emojis. Replaced them in README.md and PROMPTS.md, using words for the verdict labels. Checked the diff and confirmed both files contain no em dashes or emojis.
+
+**Integrated into main (20 Nov):** Farah's branch predated the `variables.env` to `.env` rename, so the setup text and troubleshooting table were carried over by hand and now point at `.env`; the clone command uses the default branch. The Washington D.C. and Abu Dhabi catalogue failures noted above had already been fixed on main.
